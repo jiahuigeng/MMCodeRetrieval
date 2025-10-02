@@ -1,0 +1,32 @@
+# VLM2Vec-Qwen2VL-2B 测试评估配置
+# 这是一个简化的配置文件，用于快速测试评估功能
+
+# 图像分类任务 - 使用较小的数据集进行快速测试
+ImageNet-1K:
+    dataset_parser: image_cls
+    dataset_name: ImageNet-1K
+    dataset_split: test
+    image_root: image-tasks/
+    eval_type: local
+    # 可以添加 max_samples 参数来限制测试样本数量
+    # max_samples: 100
+
+# 文档VQA任务
+DocVQA:
+    dataset_parser: mmeb
+    dataset_name: TIGER-Lab/MMEB-eval
+    subset_name: DocVQA
+    dataset_split: test
+    image_root: image-tasks/
+    eval_type: global
+    # max_samples: 50
+
+# 图像到文本检索
+MSCOCO_i2t:
+    dataset_parser: mmeb
+    dataset_name: TIGER-Lab/MMEB-eval
+    subset_name: MSCOCO_i2t
+    dataset_split: test
+    image_root: image-tasks/
+    eval_type: global
+    # max_samples: 100
