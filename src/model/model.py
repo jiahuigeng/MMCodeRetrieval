@@ -3,6 +3,10 @@ import torch
 import torch.distributed as dist
 from torch import nn, Tensor
 from transformers import PreTrainedModel, AutoModelForCausalLM, AutoConfig
+try:
+    from transformers import BitsAndBytesConfig
+except Exception:
+    BitsAndBytesConfig = None
 from peft import LoraConfig, get_peft_model, PeftModel
 from src.model.processor import QWEN2_5_VL_TOKENSELECTION
 from src.arguments import ModelArguments, TrainingArguments
@@ -119,6 +123,37 @@ class MMEBModel(nn.Module):
         config = AutoConfig.from_pretrained(model_args.model_name, trust_remote_code=True)
         model_backbone = get_backbone_name(hf_config=config)
         print_master(f'Loading backbone [{model_backbone}] from {model_args.model_name}')
+        # Configure attention backend
+        attn_impl = getattr(model_args, 'attn_implementation', None) or "sdpa"
+        if hasattr(config, "_attn_implementation"):
+            config._attn_implementation = attn_impl
+        if hasattr(config, "vision_config") and hasattr(config.vision_config, "_attn_implementation"):
+            config.vision_config._attn_implementation = attn_impl
+
+        # Optional quantization via bitsandbytes
+        bnb_config = None
+        if (getattr(model_args, 'load_in_4bit', False) or getattr(model_args, 'load_in_8bit', False)) and BitsAndBytesConfig is not None:
+            try:
+                if getattr(model_args, 'load_in_4bit', False):
+                    compute_dtype = torch.bfloat16 if getattr(model_args, 'bnb_4bit_compute_dtype', 'bfloat16') == 'bfloat16' else torch.float16
+                    bnb_config = BitsAndBytesConfig(
+                        load_in_4bit=True,
+                        bnb_4bit_quant_type=getattr(model_args, 'bnb_4bit_quant_type', 'nf4'),
+                        bnb_4bit_use_double_quant=getattr(model_args, 'bnb_4bit_use_double_quant', True),
+                        bnb_4bit_compute_dtype=compute_dtype,
+                    )
+                elif getattr(model_args, 'load_in_8bit', False):
+                    bnb_config = BitsAndBytesConfig(load_in_8bit=True)
+            except Exception:
+                bnb_config = None
+
+        quant_kwargs = {}
+        dtype_kwargs = {}
+        if bnb_config is not None:
+            quant_kwargs["quantization_config"] = bnb_config
+            quant_kwargs["device_map"] = getattr(model_args, 'device_map', 'auto')
+        else:
+            dtype_kwargs["torch_dtype"] = torch.bfloat16
         # Loading the base model
         if model_backbone == PHI3V:
             config._attn_implementation = "eager"
@@ -127,8 +162,9 @@ class MMEBModel(nn.Module):
             base_model = Phi3VForCausalLM.from_pretrained(
                 model_args.model_name,
                 config=config,
-                torch_dtype=torch.bfloat16,
                 low_cpu_mem_usage=True,
+                **quant_kwargs,
+                **dtype_kwargs,
             )
         elif model_backbone == LLAVA_NEXT:
             config.use_cache = False
@@ -136,21 +172,21 @@ class MMEBModel(nn.Module):
             base_model = LlavaNextForConditionalGeneration.from_pretrained(
                 model_args.model_name,
                 config=config,
-                torch_dtype=torch.bfloat16,
                 low_cpu_mem_usage=True,
+                **quant_kwargs,
+                **dtype_kwargs,
             )
         elif model_backbone in [QWEN2_VL, QWEN2_5_VL]:
-            config._attn_implementation = "flash_attention_2"
             config.padding_side = "left"
             config.use_cache = False
             base_model = backbone2model[model_backbone].from_pretrained(
                 model_args.model_name,
                 config=config,
-                torch_dtype=torch.bfloat16,
                 low_cpu_mem_usage=True,
+                **quant_kwargs,
+                **dtype_kwargs,
             )
         elif model_backbone in [QWEN2_VL_TOKENSELECTION, QWEN2_5_VL_TOKENSELECTION]:
-            config._attn_implementation = "flash_attention_2"
             config.padding_side = "left"
             config.use_cache = False
 
@@ -163,18 +199,21 @@ class MMEBModel(nn.Module):
             base_model = backbone2model[model_backbone].from_pretrained(
                 model_args.model_name,
                 config=config,
-                torch_dtype=torch.bfloat16,
                 low_cpu_mem_usage=True,
                 lm_skip_layer=lm_skip_layer,
                 vis_skip_layer=vis_skip_layer,
+                **quant_kwargs,
+                **dtype_kwargs,
             )
         else:
             config.use_cache = False
             base_model = cls.TRANSFORMER_CLS.from_pretrained(
                 model_args.model_name, **kwargs, config=config,
-                attn_implementation="flash_attention_2",
-                torch_dtype=torch.bfloat16,
-                trust_remote_code=True)
+                attn_implementation=attn_impl,
+                trust_remote_code=True,
+                **quant_kwargs,
+                **dtype_kwargs,
+            )
 
         if model_args.lora:
             print_master(f'Loading lora adapter from {base_model}')
@@ -213,22 +252,60 @@ class MMEBModel(nn.Module):
             model_backbone = get_backbone_name(hf_config=config, model_type=model_args.model_type)
             setattr(model_args, 'model_backbone', model_backbone)
         print_master(f'Loading backbone [{model_args.model_backbone}] from {model_name_or_path}')
+        # Configure attention backend
+        attn_impl = getattr(model_args, 'attn_implementation', None) or "sdpa"
+        if hasattr(config, "_attn_implementation"):
+            config._attn_implementation = attn_impl
+        if hasattr(config, "vision_config") and hasattr(config.vision_config, "_attn_implementation"):
+            config.vision_config._attn_implementation = attn_impl
+
+        # Optional quantization via bitsandbytes
+        bnb_config = None
+        if (getattr(model_args, 'load_in_4bit', False) or getattr(model_args, 'load_in_8bit', False)) and BitsAndBytesConfig is not None:
+            try:
+                if getattr(model_args, 'load_in_4bit', False):
+                    compute_dtype = torch.bfloat16 if getattr(model_args, 'bnb_4bit_compute_dtype', 'bfloat16') == 'bfloat16' else torch.float16
+                    bnb_config = BitsAndBytesConfig(
+                        load_in_4bit=True,
+                        bnb_4bit_quant_type=getattr(model_args, 'bnb_4bit_quant_type', 'nf4'),
+                        bnb_4bit_use_double_quant=getattr(model_args, 'bnb_4bit_use_double_quant', True),
+                        bnb_4bit_compute_dtype=compute_dtype,
+                    )
+                elif getattr(model_args, 'load_in_8bit', False):
+                    bnb_config = BitsAndBytesConfig(load_in_8bit=True)
+            except Exception:
+                bnb_config = None
+
+        quant_kwargs = {}
+        dtype_kwargs = {}
+        if bnb_config is not None:
+            quant_kwargs["quantization_config"] = bnb_config
+            quant_kwargs["device_map"] = getattr(model_args, 'device_map', 'auto')
+        else:
+            dtype_kwargs["torch_dtype"] = torch.bfloat16
         if model_args.model_backbone in {LLAVA_NEXT, QWEN2_VL, QWEN2_5_VL, QWEN2_VL_TOKENSELECTION, QWEN2_5_VL_TOKENSELECTION, E5_V}:
             config = AutoConfig.from_pretrained(model_args.model_name, trust_remote_code=True)
-            config._attn_implementation = "flash_attention_2"
-            config.vision_config._attn_implementation = "flash_attention_2"
+            if hasattr(config, "_attn_implementation"):
+                config._attn_implementation = attn_impl
+            if hasattr(config, "vision_config") and hasattr(config.vision_config, "_attn_implementation"):
+                config.vision_config._attn_implementation = attn_impl
             base_model = backbone2model[model_args.model_backbone].from_pretrained(
                 model_args.model_name,
-                torch_dtype=torch.bfloat16,
                 low_cpu_mem_usage=True,
-                config=config
+                config=config,
+                **quant_kwargs,
+                **dtype_kwargs,
             )
         elif model_args.model_backbone == PHI3V:
             config = AutoConfig.from_pretrained(model_args.model_name, trust_remote_code=True)
             config.use_cache = False
             config.padding_side = "right"
-            base_model = Phi3VForCausalLM.from_pretrained(model_args.model_name, **kwargs, config=config,
-                                                          torch_dtype=torch.bfloat16, trust_remote_code=True)
+            base_model = Phi3VForCausalLM.from_pretrained(
+                model_args.model_name, **kwargs, config=config,
+                trust_remote_code=True,
+                **quant_kwargs,
+                **dtype_kwargs,
+            )
             base_model.padding_side = "right"
         elif model_args.model_backbone == INTERNVIDEO2:
             print_master(f'Loading backbone [{model_args.model_backbone}] from {"src/model/vlm_backbone/internvideo2/"}')

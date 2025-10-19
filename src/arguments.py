@@ -26,6 +26,14 @@ class ModelArguments:
     uimask_rand: bool = field(default=False, metadata={"help": "Enable random token selection instead of uniform selection"})
     lm_skip_layer: str = field(default='[1,28,0]', metadata={"help": "Specify the layers of the language model to skip for token selection"})
     vis_skip_layer: str = field(default='[1,32,0]', metadata={"help": "Specify the layers of the vision model to skip for token selection"})
+    # Inference/Memory controls
+    attn_implementation: str = field(default="sdpa", metadata={"help": "attention backend: eager | sdpa | flash_attention_2"})
+    load_in_4bit: bool = field(default=False, metadata={"help": "load model weights in 4-bit (bitsandbytes)"})
+    load_in_8bit: bool = field(default=False, metadata={"help": "load model weights in 8-bit (bitsandbytes)"})
+    bnb_4bit_quant_type: str = field(default="nf4", metadata={"help": "4-bit quant type: nf4 or fp4"})
+    bnb_4bit_use_double_quant: bool = field(default=True, metadata={"help": "use double quant for 4-bit"})
+    bnb_4bit_compute_dtype: str = field(default="bfloat16", metadata={"help": "compute dtype for 4-bit: float16 | bfloat16"})
+    device_map: str = field(default="auto", metadata={"help": "device map when loading quantized models"})
 
 
 @dataclass

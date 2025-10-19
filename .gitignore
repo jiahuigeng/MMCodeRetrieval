@@ -10,7 +10,9 @@ archive/
 VLM2Vec-pro.iml
 VLM2Vec.iml
 workspace.xml
-
+datasets/
+MMCoIR/
+useless/
 # Compiled source #
 ###################
 *.com
