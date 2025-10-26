@@ -110,7 +110,7 @@ def main():
     parser.add_argument("--repo-id", default="SD122025/ChartGen-200K", help="Hugging Face 数据集仓库 ID")
     parser.add_argument("--root", default="datasets", help="数据集根目录（将创建/使用该目录）")
     parser.add_argument("--dataset-name", default="ChartGen-200K", help="保存目录名（位于 root 下）")
-    parser.add_argument("--allow", nargs="*", default=["train/*", "*.parquet"], help="允许下载的路径模式（可多项）")
+    parser.add_argument("--allow", nargs="*", default=None, help="允许下载的路径模式（可多项，默认下载全部）")
     parser.add_argument("--no-symlinks", action="store_true", default=True, help="禁用符号链接复制（Windows 推荐）")
     parser.add_argument("--make-jsonl", action="store_true", help="尝试将 parquet 转为 JSONL（需 pandas/pyarrow）")
     parser.add_argument("--jsonl-limit", type=int, default=None, help="JSONL 生成的最大记录数（默认全部）")
