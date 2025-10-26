@@ -108,7 +108,7 @@ def print_dataset_summary(root: Path, name: str, samples: int = 3, split: str = 
 
 def main():
     parser = argparse.ArgumentParser(description="Inspect OmniSVG MMSVG datasets in a local folder.")
-    parser.add_argument("--root", type=str, default="datasets", help="Root directory containing downloaded datasets.")
+    parser.add_argument("--root", type=str, default="MMCoIR", help="Root directory containing downloaded datasets.")
     parser.add_argument(
         "--dataset_names",
         nargs="+",
