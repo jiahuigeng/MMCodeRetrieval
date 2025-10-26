@@ -80,7 +80,7 @@ def safe_copy(src: Path, dst: Path, overwrite: bool = False) -> bool:
 
 def to_train_item(summary: str, code: str, rel_img_path: str) -> dict:
     return {
-        "qry": f"<|image_1|>\n{str(summary).strip()}",
+        "qry": f"<|image_1|>\n{PROMPT}",
         "qry_image_path": rel_img_path,
         "pos_text": str(code),
         "pos_image_path": "",
