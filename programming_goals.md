@@ -43,6 +43,12 @@
 }
 ```
 
+### 图片路径约定
+- JSONL 中的图片路径应为相对路径，不包含 `MMCoIR` 前缀。
+- 推荐统一写为 `images/<filename>`；训练时将 `image_dir` 指向输出目录；评测时将 `image_root` 指向输出目录。
+- 加载器会拼接为 `image_dir/qry_image_path` 或 `image_root/qry_img_path` 等形成完整路径。
+- 若需避免重名冲突，可在整理图片时加前缀（如 `train_`/`test_`），并在生成 JSONL 时保持一致的文件名。
+
 ## 当前可用数据集
 - `rootsautomation/RICO-Screen2Words` - UI截图和描述数据集
 - `xxxllz/Chart2Code-160k` - 图表到代码数据集

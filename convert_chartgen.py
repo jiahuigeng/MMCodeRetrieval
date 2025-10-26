@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
 Convert SD122025/ChartGen-200K dataset into multimodal retrieval format
-according to programming_goals.md, and copy images to MMCoIR/chartgen/images.
+according to programming_goals.md，生成 JSONL 并使用 train/images 与 test/images 相对路径（不复制图片、不校验存在性）。
 
 - Input: local snapshot under datasets/ChartGen-200K (downloaded via download_chartgen.py)
 - Output: JSONL files under MMCoIR/chartgen/{train.jsonl, test.jsonl}
-- Images: copied to MMCoIR/chartgen/images/, and JSONL paths rewritten accordingly
+- Images: 期望位于输出目录的 train/images/ 与 test/images/；脚本不复制也不校验。
 
 Train JSONL fields:
 - qry, qry_image_path, pos_text, pos_image_path, neg_text, neg_image_path
@@ -26,13 +26,17 @@ REPO_ROOT = Path(__file__).parent
 DEFAULT_INPUT_ROOT = REPO_ROOT / "datasets" / "ChartGen-200K"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "MMCoIR" / "chartgen"
 IMAGES_SUBDIR = "images"
+TRAIN_SUBDIR = "train"
+TEST_SUBDIR = "test"
 
 
-def ensure_dirs(out_dir: Path) -> Tuple[Path, Path]:
+def ensure_dirs(out_dir: Path) -> Tuple[Path, Path, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
-    images_dir = out_dir / IMAGES_SUBDIR
-    images_dir.mkdir(parents=True, exist_ok=True)
-    return out_dir, images_dir
+    train_images_dir = out_dir / TRAIN_SUBDIR / IMAGES_SUBDIR
+    test_images_dir = out_dir / TEST_SUBDIR / IMAGES_SUBDIR
+    train_images_dir.mkdir(parents=True, exist_ok=True)
+    test_images_dir.mkdir(parents=True, exist_ok=True)
+    return out_dir, train_images_dir, test_images_dir
 
 
 def find_parquet_files(root: Path) -> List[Path]:
@@ -84,7 +88,7 @@ def to_test_item(summary: str, code: str, rel_img_path: str) -> dict:
 
 
 def convert_chartgen(input_root: Path, output_dir: Path, limit_train: int = None, limit_test: int = None, overwrite_images: bool = False):
-    out_dir, images_dir = ensure_dirs(output_dir)
+    out_dir, train_images_dir, test_images_dir = ensure_dirs(output_dir)
     parquet_files = find_parquet_files(input_root)
     if not parquet_files:
         print(f"[ERROR] No parquet files found under {input_root}")
@@ -127,15 +131,8 @@ def convert_chartgen(input_root: Path, output_dir: Path, limit_train: int = None
                 summary = row.get("summary", "")
                 code = row.get("code", "")
 
-                src_img = input_root / image_path
                 basename = Path(image_path).name
-                dst_img = images_dir / basename
-
-                copied = safe_copy(src_img, dst_img, overwrite=overwrite_images)
-                if not copied:
-                    continue
-
-                rel_img_path = f"{IMAGES_SUBDIR}/{basename}"
+                rel_img_path = f"{TRAIN_SUBDIR}/{IMAGES_SUBDIR}/{basename}" if split == "train" else f"{TEST_SUBDIR}/{IMAGES_SUBDIR}/{basename}"
 
                 if split == "train":
                     item = to_train_item(summary, code, rel_img_path)
@@ -174,19 +171,20 @@ def convert_chartgen(input_root: Path, output_dir: Path, limit_train: int = None
             f.write(json.dumps(item, ensure_ascii=False) + "\n")
 
     print("[DONE] Conversion completed.")
-    print(f"Images copied to: {images_dir}")
+    print(f"Train images directory: {train_images_dir}")
+    print(f"Test images directory: {test_images_dir}")
     print(f"Train JSONL: {train_out}")
     print(f"Test JSONL: {test_out}")
 
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Convert ChartGen-200K to MMCoIR JSONL and copy images")
+    parser = argparse.ArgumentParser(description="Convert ChartGen-200K to MMCoIR JSONL (no image copy; paths use train/images & test/images)")
     parser.add_argument("--input-root", default=str(DEFAULT_INPUT_ROOT), help="Input dataset root (local snapshot)")
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="Output directory under MMCoIR/chartgen")
     parser.add_argument("--limit-train", type=int, default=None, help="Optional limit for train samples")
     parser.add_argument("--limit-test", type=int, default=None, help="Optional limit for test samples")
-    parser.add_argument("--overwrite-images", action="store_true", help="Overwrite existing images in output")
+    parser.add_argument("--overwrite-images", action="store_true", help="[Deprecated] No copying; kept for compatibility")
     args = parser.parse_args()
 
     convert_chartgen(
