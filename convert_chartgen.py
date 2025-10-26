@@ -28,6 +28,17 @@ DEFAULT_OUTPUT_DIR = REPO_ROOT / "MMCoIR" / "chartgen"
 IMAGES_SUBDIR = "images"
 TRAIN_SUBDIR = "train"
 TEST_SUBDIR = "test"
+CHARTGEN_DIRNAME = "chartgen"
+
+PROMPT = (
+    "Please take a look at this chart image.\n"
+    "Consider you are a data visualization expert, and generate Python code that perfectly reconstructs this chart image.\n"
+    "Make sure to redraw both the data points and the overall semantics and style of the chart as best as possible.\n"
+    "In addition, ensure that the Python code is executable, and enclosed within triple backticks and labeled with python, like this:\n"
+    "```python\n"
+    "<your code here>\n"
+    "```"
+)
 
 
 def ensure_dirs(out_dir: Path) -> Tuple[Path, Path, Path]:
@@ -80,7 +91,7 @@ def to_train_item(summary: str, code: str, rel_img_path: str) -> dict:
 
 def to_test_item(summary: str, code: str, rel_img_path: str) -> dict:
     return {
-        "qry_text": f"<|image_1|>\n{str(summary).strip()}",
+        "qry_text": f"<|image_1|>\n{PROMPT}",
         "qry_img_path": rel_img_path,
         "tgt_text": [str(code)],
         "tgt_img_path": [rel_img_path],
@@ -132,7 +143,7 @@ def convert_chartgen(input_root: Path, output_dir: Path, limit_train: int = None
                 code = row.get("code", "")
 
                 basename = Path(image_path).name
-                rel_img_path = f"{TRAIN_SUBDIR}/{IMAGES_SUBDIR}/{basename}" if split == "train" else f"{TEST_SUBDIR}/{IMAGES_SUBDIR}/{basename}"
+                rel_img_path = f"{CHARTGEN_DIRNAME}/{TRAIN_SUBDIR}/{IMAGES_SUBDIR}/{basename}" if split == "train" else f"{CHARTGEN_DIRNAME}/{TEST_SUBDIR}/{IMAGES_SUBDIR}/{basename}"
 
                 if split == "train":
                     item = to_train_item(summary, code, rel_img_path)
