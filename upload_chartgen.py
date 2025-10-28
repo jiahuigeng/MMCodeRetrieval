@@ -90,7 +90,7 @@ def main() -> None:
     print(f"[UPLOAD] {args.local_root} -> {args.repo_id}:{args.prefix}/ (递归)")
     try:
         api.upload_folder(
-            path_dir=args.local_root,
+            folder_path=args.local_root,
             repo_id=args.repo_id,
             repo_type="dataset",
             path_in_repo=args.prefix,
