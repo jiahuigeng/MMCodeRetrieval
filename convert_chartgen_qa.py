@@ -91,42 +91,42 @@ def parse_qa_segments(qa_cell: object) -> List[Dict[str, str]]:
     """将 question_answers 单元解析为 segment 列表。
     支持：
     - list[dict] 直接为对话切片
-    - dict 包含 key 'utterances' 或 'dialogs' 为列表
-    - str 为 JSON 字符串，上述两种之一
+    - dict 包含 key 'utterances'、'dialogs'、'dialog'、'conversations'、'messages' 等为列表
+    - str 为 JSON 字符串，上述两种之一；若为非标准 JSON（如单引号），尝试 ast.literal_eval 兼容
     返回统一结构：[{"speaker": ..., "text": ...}, ...]
     """
     try:
         qa_obj = json.loads(qa_cell) if isinstance(qa_cell, str) else qa_cell
     except Exception:
         qa_obj = qa_cell
+        if isinstance(qa_cell, str):
+            try:
+                import ast
+                qa_obj = ast.literal_eval(qa_cell)
+            except Exception:
+                pass
 
     segments: List[Dict[str, str]] = []
+    iterable = None
     if isinstance(qa_obj, list):
-        for seg in qa_obj:
-            sp = (seg.get("speaker") or seg.get("role") or "").lower()
-            txt = seg.get("text") or seg.get("content") or ""
+        iterable = qa_obj
+    elif isinstance(qa_obj, dict):
+        for key in ("utterances", "dialogs", "dialog", "conversations", "messages"):
+            if isinstance(qa_obj.get(key), list):
+                iterable = qa_obj.get(key)
+                break
+    if iterable is not None:
+        for seg in iterable:
+            if not isinstance(seg, dict):
+                continue
+            sp = (seg.get("speaker") or seg.get("role") or seg.get("from") or "").lower()
+            txt = seg.get("text") or seg.get("content") or seg.get("value") or seg.get("utterance") or ""
             if not isinstance(txt, str):
                 try:
                     txt = str(txt)
                 except Exception:
                     txt = ""
             segments.append({"speaker": sp, "text": txt})
-    elif isinstance(qa_obj, dict):
-        cand = None
-        if isinstance(qa_obj.get("utterances"), list):
-            cand = qa_obj.get("utterances")
-        elif isinstance(qa_obj.get("dialogs"), list):
-            cand = qa_obj.get("dialogs")
-        if cand is not None:
-            for seg in cand:
-                sp = (seg.get("speaker") or seg.get("role") or "").lower()
-                txt = seg.get("text") or seg.get("content") or ""
-                if not isinstance(txt, str):
-                    try:
-                        txt = str(txt)
-                    except Exception:
-                        txt = ""
-                segments.append({"speaker": sp, "text": txt})
     return segments
 
 
@@ -148,11 +148,13 @@ def find_qa_cell_from_record(rec: Dict) -> Tuple[Optional[object], Optional[str]
 
 def extract_qa_pairs(qa_cell: object) -> List[Tuple[str, str]]:
     """从 QA 单元中提取成对的 (question, answer)。
-    逻辑：遇到 user 记为待匹配的 question，遇到 agent/assistant 则与最近的 question 匹配成对。
+    逻辑：遇到 user/human 记为待匹配的 question，遇到 agent/assistant/bot 等则与最近的 question 匹配成对。
     """
     segs = parse_qa_segments(qa_cell)
     pairs: List[Tuple[str, str]] = []
     pending_q: Optional[str] = None
+    user_aliases = {"user", "human", "customer", "visitor", "questioner"}
+    agent_aliases = {"agent", "assistant", "bot", "ai", "model", "system_response", "answerer"}
     for seg in segs:
         sp = seg.get("speaker", "").lower()
         txt = seg.get("text", "")
@@ -161,10 +163,10 @@ def extract_qa_pairs(qa_cell: object) -> List[Tuple[str, str]]:
                 txt = str(txt)
             except Exception:
                 txt = ""
-        if sp == "user":
+        if sp in user_aliases:
             if txt:
                 pending_q = txt
-        elif sp in ("agent", "assistant"):
+        elif sp in agent_aliases:
             if pending_q and txt:
                 pairs.append((pending_q, txt))
                 pending_q = None
@@ -199,9 +201,10 @@ def convert_chartgen_qa(
     limit_test: Optional[int] = None,
     pairs_per_image: int = 2,
     debug: bool = False,
+    input_path: Optional[Path] = None,
 ):
     out_dir = ensure_dirs(output_dir)
-    files = find_input_files(input_root)
+    files = [input_path] if input_path is not None else find_input_files(input_root)
     if not files:
         print(f"[ERROR] No .parquet or .jsonl files found under {input_root}")
         return
@@ -255,6 +258,16 @@ def convert_chartgen_qa(
                 empty_qa_pairs += 1
                 if debug:
                     print(f"[DEBUG] {fp.name} row {idx}: QA '{qa_key}' produced 0 pairs (type={type(qa_cell).__name__})")
+                    try:
+                        if isinstance(qa_cell, str):
+                            head = qa_cell[:200].replace("\n", "\\n")
+                            print(f"[DEBUG] Raw QA head: {head}...")
+                        elif isinstance(qa_cell, dict):
+                            print(f"[DEBUG] QA dict keys: {list(qa_cell.keys())}")
+                        elif isinstance(qa_cell, list):
+                            print(f"[DEBUG] QA list length: {len(qa_cell)}; first seg: {qa_cell[0] if qa_cell else None}")
+                    except Exception:
+                        pass
                 continue
             use_pairs = qa_pairs[-pairs_per_image:] if len(qa_pairs) >= pairs_per_image else qa_pairs
 
@@ -336,6 +349,7 @@ def main():
     parser.add_argument("--limit-train", type=int, default=None, help="Optional limit for train items")
     parser.add_argument("--limit-test", type=int, default=None, help="Optional limit for test items")
     parser.add_argument("--debug", action="store_true", help="Print verbose debug info for field detection and parsing")
+    parser.add_argument("--input", type=str, default=None, help="Optional: single file to read (.parquet or .jsonl)")
     args = parser.parse_args()
 
     convert_chartgen_qa(
@@ -346,6 +360,7 @@ def main():
         limit_test=args.limit_test,
         pairs_per_image=args.pairs_per_image,
         debug=args.debug,
+        input_path=Path(args.input) if args.input else None,
     )
 
 
