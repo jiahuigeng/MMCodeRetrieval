@@ -138,9 +138,8 @@ def process_split(api: HfApi, split_root: Path, repo_id: str, split: str, datase
         return
     print(f"[INFO] 处理 {split_root} -> {repo_id}, 数据集数: {len(ds_dirs)}")
 
-    # optional create repo
-    if create_repo:
-        ensure_repo(repo_id, create=True)
+    # ensure repo exists always before upload
+    ensure_repo(repo_id, create=True)
 
     for d in ds_dirs:
         name = d.name
