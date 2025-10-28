@@ -296,6 +296,8 @@ def convert_chartgen_qa(
     train_items: List[dict] = [it for group in remaining_for_train for it in group]
 
     print(f"[INFO] Built image groups: {total_images}; test images: {len(selected_for_test)} -> test items: {len(test_items)}; remaining train images: {len(remaining_for_train)} -> train items: {len(train_items)}; pairs collected: {total_pairs_collected}")
+    if debug:
+        print(f"[DEBUG] Skip stats: missing_image_path={missing_image_path}, non_train_image={non_train_image}, missing_qa_field={missing_qa_field}, empty_qa_pairs={empty_qa_pairs}")
 
     # 可选限制
     if limit_train is not None:
@@ -333,6 +335,7 @@ def main():
     parser.add_argument("--pairs-per-image", type=int, default=2, help="Number of QA pairs to take per image (use last K)")
     parser.add_argument("--limit-train", type=int, default=None, help="Optional limit for train items")
     parser.add_argument("--limit-test", type=int, default=None, help="Optional limit for test items")
+    parser.add_argument("--debug", action="store_true", help="Print verbose debug info for field detection and parsing")
     args = parser.parse_args()
 
     convert_chartgen_qa(
@@ -342,6 +345,7 @@ def main():
         limit_train=args.limit_train,
         limit_test=args.limit_test,
         pairs_per_image=args.pairs_per_image,
+        debug=args.debug,
     )
 
 
