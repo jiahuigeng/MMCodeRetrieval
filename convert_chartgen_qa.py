@@ -119,13 +119,23 @@ def parse_qa_segments(qa_cell: object) -> List[Dict[str, str]]:
         for seg in iterable:
             if not isinstance(seg, dict):
                 continue
-            sp = (seg.get("speaker") or seg.get("role") or seg.get("from") or "").lower()
-            txt = seg.get("text") or seg.get("content") or seg.get("value") or seg.get("utterance") or ""
-            if not isinstance(txt, str):
+            # 归一化键名，兼容大小写与空格
+            norm = {str(k).strip().lower().replace(" ", "_"): v for k, v in seg.items()}
+            sp_raw = norm.get("speaker") or norm.get("role") or norm.get("from") or norm.get("author") or norm.get("sender") or ""
+            txt_raw = norm.get("text") or norm.get("content") or norm.get("value") or norm.get("utterance") or norm.get("message") or norm.get("response") or norm.get("answer") or norm.get("question") or ""
+            # 转字符串与去空白
+            try:
+                sp = str(sp_raw).strip().lower()
+            except Exception:
+                sp = ""
+            if not isinstance(txt_raw, str):
                 try:
-                    txt = str(txt)
+                    txt = str(txt_raw)
                 except Exception:
                     txt = ""
+            else:
+                txt = txt_raw
+            txt = txt.strip()
             segments.append({"speaker": sp, "text": txt})
     return segments
 
@@ -156,13 +166,14 @@ def extract_qa_pairs(qa_cell: object) -> List[Tuple[str, str]]:
     user_aliases = {"user", "human", "customer", "visitor", "questioner"}
     agent_aliases = {"agent", "assistant", "bot", "ai", "model", "system_response", "answerer"}
     for seg in segs:
-        sp = seg.get("speaker", "").lower()
+        sp = (seg.get("speaker", "") or "").strip().lower()
         txt = seg.get("text", "")
         if not isinstance(txt, str):
             try:
                 txt = str(txt)
             except Exception:
                 txt = ""
+        txt = txt.strip()
         if sp in user_aliases:
             if txt:
                 pending_q = txt
@@ -202,6 +213,7 @@ def convert_chartgen_qa(
     pairs_per_image: int = 2,
     debug: bool = False,
     input_path: Optional[Path] = None,
+    focus_index: Optional[int] = None,
 ):
     out_dir = ensure_dirs(output_dir)
     files = [input_path] if input_path is not None else find_input_files(input_root)
@@ -232,43 +244,58 @@ def convert_chartgen_qa(
             continue
 
         for idx, rec in enumerate(records):
-            image_path = rec.get("image_path") or rec.get("image") or ""
-            if not isinstance(image_path, str) or not image_path:
-                missing_image_path += 1
-                if debug:
-                    print(f"[DEBUG] {fp.name} row {idx}: missing image_path; keys: {list(rec.keys())[:12]}")
-                continue
-            # 仅使用 train split；原 test split 不参与生成
-            if "train/" not in image_path.replace("\\", "/"):
-                non_train_image += 1
-                if debug:
-                    print(f"[DEBUG] {fp.name} row {idx}: skip non-train image_path={image_path}")
-                continue
++            if focus_index is not None and idx != focus_index:
++                continue
+             image_path = rec.get("image_path") or rec.get("image") or ""
+             if not isinstance(image_path, str) or not image_path:
+                 missing_image_path += 1
+                 if debug:
+                     print(f"[DEBUG] {fp.name} row {idx}: missing image_path; keys: {list(rec.keys())[:12]}")
+                 continue
+             # 仅使用 train split；原 test split 不参与生成
+             if "train/" not in image_path.replace("\\", "/"):
+                 non_train_image += 1
+                 if debug:
+                     print(f"[DEBUG] {fp.name} row {idx}: skip non-train image_path={image_path}")
+                 continue
 
-            # 定位 QA 列（兼容带空格的 'question answers'）
-            qa_cell, qa_key = find_qa_cell_from_record(rec)
-            if qa_cell is None:
-                missing_qa_field += 1
-                if debug:
-                    print(f"[DEBUG] {fp.name} row {idx}: no QA field found; keys: {list(rec.keys())}")
-                continue
+             # 定位 QA 列（兼容带空格的 'question answers'）
+             qa_cell, qa_key = find_qa_cell_from_record(rec)
+             if qa_cell is None:
+                 missing_qa_field += 1
+                 if debug:
+                     print(f"[DEBUG] {fp.name} row {idx}: no QA field found; keys: {list(rec.keys())}")
+                 continue
 
-            qa_pairs = extract_qa_pairs(qa_cell)
-            if not qa_pairs:
-                empty_qa_pairs += 1
-                if debug:
-                    print(f"[DEBUG] {fp.name} row {idx}: QA '{qa_key}' produced 0 pairs (type={type(qa_cell).__name__})")
-                    try:
-                        if isinstance(qa_cell, str):
-                            head = qa_cell[:200].replace("\n", "\\n")
-                            print(f"[DEBUG] Raw QA head: {head}...")
-                        elif isinstance(qa_cell, dict):
-                            print(f"[DEBUG] QA dict keys: {list(qa_cell.keys())}")
-                        elif isinstance(qa_cell, list):
-                            print(f"[DEBUG] QA list length: {len(qa_cell)}; first seg: {qa_cell[0] if qa_cell else None}")
-                    except Exception:
-                        pass
-                continue
+             qa_pairs = extract_qa_pairs(qa_cell)
+             if not qa_pairs:
+                 empty_qa_pairs += 1
+                 if debug:
+                     print(f"[DEBUG] {fp.name} row {idx}: QA '{qa_key}' produced 0 pairs (type={type(qa_cell).__name__})")
+                     try:
+                         if isinstance(qa_cell, str):
+                             head = qa_cell[:200].replace("\n", "\\n")
+                             print(f"[DEBUG] Raw QA head: {head}...")
++                        # 打印归一化后的前几个 segment 的角色与文本片段，便于定位不匹配原因
++                        segs_dbg = parse_qa_segments(qa_cell)
++                        roles = [s.get("speaker") for s in segs_dbg[:8]]
++                        print(f"[DEBUG] Roles head: {roles}")
++                        for j, s in enumerate(segs_dbg[:4]):
++                            th = (s.get("text") or "")
++                            if not isinstance(th, str):
++                                try:
++                                    th = str(th)
++                                except Exception:
++                                    th = ""
++                            th = th.replace("\n", "\\n")
++                            print(f"[DEBUG] seg{j}: speaker='{s.get('speaker')}', text='{th[:120]}...'")
+                         elif isinstance(qa_cell, dict):
+                             print(f"[DEBUG] QA dict keys: {list(qa_cell.keys())}")
+                         elif isinstance(qa_cell, list):
+                             print(f"[DEBUG] QA list length: {len(qa_cell)}; first seg: {qa_cell[0] if qa_cell else None}")
+                     except Exception:
+                         pass
+                 continue
             use_pairs = qa_pairs[-pairs_per_image:] if len(qa_pairs) >= pairs_per_image else qa_pairs
 
             basename = Path(image_path).name
@@ -350,6 +377,7 @@ def main():
     parser.add_argument("--limit-test", type=int, default=None, help="Optional limit for test items")
     parser.add_argument("--debug", action="store_true", help="Print verbose debug info for field detection and parsing")
     parser.add_argument("--input", type=str, default=None, help="Optional: single file to read (.parquet or .jsonl)")
++    parser.add_argument("--focus-index", type=int, default=None, help="Optional: only process a specific 0-based row index in the input file")
     args = parser.parse_args()
 
     convert_chartgen_qa(
@@ -361,6 +389,7 @@ def main():
         pairs_per_image=args.pairs_per_image,
         debug=args.debug,
         input_path=Path(args.input) if args.input else None,
++        focus_index=args.focus_index,
     )
 
 
