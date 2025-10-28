@@ -94,7 +94,7 @@ def to_test_item(summary: str, code: str, rel_img_path: str) -> dict:
         "qry_text": f"<|image_1|>\n{PROMPT}",
         "qry_img_path": rel_img_path,
         "tgt_text": [str(code)],
-        "tgt_img_path": [rel_img_path],
+        "tgt_img_path": [""],
     }
 
 
