@@ -1,396 +1,287 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 将 SD122025/ChartGen-200K 转换为基于 QA 的多模态检索格式，
 在同一目标文件夹下生成 train_qa.jsonl 与 test_qa.jsonl。
 
-- Input: 本地数据位于 datasets/ChartGen-200K （通过 download_chartgen.py 下载，或手动拷贝）
+- Input: 本地数据快照位于 datasets/ChartGen-200K（通过 download_chartgen.py 下载）或单文件 .jsonl/.parquet
 - Output: JSONL 文件位于 MMCoIR/chartgen/{train_qa.jsonl, test_qa.jsonl}
-- Images: 仅写出相对路径，不复制图片，不校验图片存在性。
+- Images: 期望位于输出目录的 train/images 与 test/images，相对路径指向这些目录；脚本不复制、不校验图片存在性。
 
-构建规则：
-- 递归扫描 input-root 下的所有 .parquet 与 .jsonl，逐条读取记录。
-- 仅处理 image_path 含 "train/" 的样本；从训练集中按顺序抽取前 N=2000 张图片作为测试集，其余作为训练集。
-- question_answers 支持三种形态：
-  1) list[dict]，每个 dict 有 speaker/text
-  2) dict 包含 key 'utterances' 或 'dialogs' 为列表
-  3) str（JSON 字符串），上述两种之一
-- 每张图片挑选靠后的 K=2 个 (question, answer) 对；为每个对构建一个样本：
-  - 训练集字段：
-    - qry: "<|image_1|>\n" + question
-    - qry_image_path: 相对路径 "chartgen/train/images/<filename>"
-    - pos_text: answer
-    - pos_image_path: ""
-    - neg_text: ""
-    - neg_image_path: ""
-  - 测试集字段：
-    - qry_text: "<|image_1|>\n" + question
-    - qry_img_path: 相对路径 "chartgen/train/images/<filename>"
-    - tgt_text: [answer]
-    - tgt_img_path: [""]
+训练集 JSONL 字段（与规范一致）:
+- qry: 带图像 token 的查询文本（<|image_1|> + 问句）
+- qry_image_path: 查询图片相对路径（chartgen/train/images/<filename>）
+- pos_text: 正样本文本（答案文本）
+- pos_image_path: 正样本图片路径（本任务无 -> 空字符串）
+- neg_text: 负样本文本（无 -> 空字符串）
+- neg_image_path: 负样本图片路径（无 -> 空字符串）
+
+测试集 JSONL 字段（与规范一致）:
+- qry_text: 带图像 token 的查询文本（<|image_1|> + 问句）
+- qry_img_path: 查询图片相对路径（chartgen/<split>/images/<filename>）
+- tgt_text: 目标文本列表（List[str]，答案文本）
+- tgt_img_path: 目标图片路径列表（List[str]；本任务无目标图像 -> [""]）
+
+额外说明：原始 test split 可参与生成，但若未显式标注，则从 image_path 自动检测 split；默认仅使用每张图最后 K=2 组 (question, answer)。
 """
 
 import os
+import sys
 import json
-from pathlib import Path
-from typing import List, Tuple, Dict, Optional
+import argparse
+from typing import Optional, Tuple, List, Dict, Any
 
-REPO_ROOT = Path(__file__).parent
-DEFAULT_INPUT_ROOT = REPO_ROOT / "datasets" / "ChartGen-200K"
-DEFAULT_OUTPUT_DIR = REPO_ROOT / "MMCoIR" / "chartgen"
-CHARTGEN_PREFIX = "chartgen"
-IMAGES_SUBDIR = "images"
-TRAIN_SUBDIR = "train"
+try:
+    import pandas as pd
+except Exception:
+    pd = None
+
+CHARTGEN_DIRNAME = "chartgen"
+IMG_SUBDIR = "images"
 IMAGE_TOKEN = "<|image_1|>"
 
+DEFAULT_INPUT_DIR = os.path.join("datasets", "ChartGen-200K")
+DEFAULT_OUTPUT_DIR = os.path.join("MMCoIR", "chartgen")
 
-def ensure_dirs(out_dir: Path) -> Path:
-    out_dir.mkdir(parents=True, exist_ok=True)
-    # 仅确保输出根目录存在；脚本不复制图片
-    return out_dir
-
-
-def find_input_files(root: Path) -> List[Path]:
-    files: List[Path] = []
-    for r, _dirs, fnames in os.walk(root):
-        for fn in fnames:
-            lower = fn.lower()
-            if lower.endswith('.parquet') or lower.endswith('.jsonl'):
-                files.append(Path(r) / fn)
-    return sorted(files)
+# --- 路径与 split ---
+def detect_split_from_path(image_path: str) -> Optional[str]:
+    p = str(image_path).lower()
+    if "/train/" in p or "\\train\\" in p:
+        return "train"
+    if "/test/" in p or "\\test\\" in p:
+        return "test"
+    return None
 
 
-def read_parquet_records(path: Path, limit: Optional[int] = None) -> List[Dict]:
-    try:
-        import pandas as pd  # type: ignore
-    except Exception:
-        raise RuntimeError("读取 parquet 需要 pandas/pyarrow，请先安装：pip install pandas pyarrow")
-    df = pd.read_parquet(path)
-    if limit is not None:
-        df = df.head(limit)
-    return [row.to_dict() for _, row in df.iterrows()]
+def make_rel_img_path(image_path: str, split: str) -> str:
+    base = os.path.basename(str(image_path))
+    return f"{CHARTGEN_DIRNAME}/{split}/{IMG_SUBDIR}/{base}"
 
 
-def read_jsonl_records(path: Path, limit: Optional[int] = None) -> List[Dict]:
-    out: List[Dict] = []
-    with open(path, 'r', encoding='utf-8') as f:
+# --- 文件读写 ---
+def save_jsonl(items: List[Dict[str, Any]], out_path: str):
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as f:
+        for it in items:
+            f.write(json.dumps(it, ensure_ascii=False) + "\n")
+
+
+def read_jsonl(path: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    records: List[Dict[str, Any]] = []
+    with open(path, "r", encoding="utf-8") as f:
         for i, line in enumerate(f):
+            if limit is not None and i >= limit:
+                break
             line = line.strip()
             if not line:
                 continue
             try:
-                rec = json.loads(line)
+                obj = json.loads(line)
+                records.append(obj)
             except Exception:
                 continue
-            out.append(rec)
-            if limit is not None and len(out) >= limit:
-                break
+    return records
+
+
+def read_parquet(path: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    if pd is None:
+        print(f"[WARN] pandas 未安装，无法读取 parquet: {path}")
+        return []
+    try:
+        df = pd.read_parquet(path)
+    except Exception as e:
+        print(f"[WARN] 读取 parquet 失败: {path}: {e}")
+        return []
+    out: List[Dict[str, Any]] = []
+    for idx, row in df.iterrows():
+        if limit is not None and len(out) >= limit:
+            break
+        rec = {}
+        # 尝试标准字段
+        for k in ["image_path", "image", "question_answers", "qa_cell", "utterances", "dialog"]:
+            if k in df.columns:
+                rec[k] = row.get(k, None)
+        # 兜底：若存在 image 列是 dict（包含 path/bytes），保留原结构
+        out.append(rec)
     return out
 
 
-def parse_qa_segments(qa_cell: object) -> List[Dict[str, str]]:
-    """将 question_answers 单元解析为 segment 列表。
-    支持：
-    - list[dict] 直接为对话切片
-    - dict 包含 key 'utterances'、'dialogs'、'dialog'、'conversations'、'messages' 等为列表
-    - str 为 JSON 字符串，上述两种之一；若为非标准 JSON（如单引号），尝试 ast.literal_eval 兼容
-    返回统一结构：[{"speaker": ..., "text": ...}, ...]
-    """
-    try:
-        qa_obj = json.loads(qa_cell) if isinstance(qa_cell, str) else qa_cell
-    except Exception:
-        qa_obj = qa_cell
-        if isinstance(qa_cell, str):
-            try:
-                import ast
-                qa_obj = ast.literal_eval(qa_cell)
-            except Exception:
-                pass
-
-    segments: List[Dict[str, str]] = []
-    iterable = None
-    if isinstance(qa_obj, list):
-        iterable = qa_obj
-    elif isinstance(qa_obj, dict):
-        for key in ("utterances", "dialogs", "dialog", "conversations", "messages"):
-            if isinstance(qa_obj.get(key), list):
-                iterable = qa_obj.get(key)
-                break
-    if iterable is not None:
-        for seg in iterable:
-            if not isinstance(seg, dict):
-                continue
-            # 归一化键名，兼容大小写与空格
-            norm = {str(k).strip().lower().replace(" ", "_"): v for k, v in seg.items()}
-            sp_raw = norm.get("speaker") or norm.get("role") or norm.get("from") or norm.get("author") or norm.get("sender") or ""
-            txt_raw = norm.get("text") or norm.get("content") or norm.get("value") or norm.get("utterance") or norm.get("message") or norm.get("response") or norm.get("answer") or norm.get("question") or ""
-            # 转字符串与去空白
-            try:
-                sp = str(sp_raw).strip().lower()
-            except Exception:
-                sp = ""
-            if not isinstance(txt_raw, str):
-                try:
-                    txt = str(txt_raw)
-                except Exception:
-                    txt = ""
-            else:
-                txt = txt_raw
-            txt = txt.strip()
-            segments.append({"speaker": sp, "text": txt})
-    return segments
+# --- QA 解析 ---
+def _norm_key(k: Any) -> str:
+    return str(k).strip().lower().replace(" ", "")
 
 
-def find_qa_cell_from_record(rec: Dict) -> Tuple[Optional[object], Optional[str]]:
-    """Locate QA field in a record, supporting aliases like 'question_answers', 'question answers', 'qa', 'utterances', 'dialogs'."""
-    if not isinstance(rec, dict):
-        return None, None
-    # Prefer normalized key matching
-    for key in rec.keys():
-        norm = key.strip().lower().replace(" ", "_")
-        if norm in ("question_answers", "qa", "utterances", "dialogs"):
-            return rec.get(key), key
-    # Fallback: direct exact names including space variant
-    for cand in ("question_answers", "question answers", "qa", "utterances", "dialogs"):
-        if cand in rec:
-            return rec.get(cand), cand
-    return None, None
+def _norm_speaker(s: Any) -> str:
+    return str(s).strip().lower()
 
 
-def extract_qa_pairs(qa_cell: object) -> List[Tuple[str, str]]:
-    """从 QA 单元中提取成对的 (question, answer)。
-    逻辑：遇到 user/human 记为待匹配的 question，遇到 agent/assistant/bot 等则与最近的 question 匹配成对。
-    """
-    segs = parse_qa_segments(qa_cell)
+def _extract_pairs_from_segments(segments: List[Dict[str, Any]], debug: bool = False) -> List[Tuple[str, str]]:
+    q_roles = {"user", "human"}
+    a_roles = {"agent", "assistant", "bot"}
     pairs: List[Tuple[str, str]] = []
     pending_q: Optional[str] = None
-    user_aliases = {"user", "human", "customer", "visitor", "questioner"}
-    agent_aliases = {"agent", "assistant", "bot", "ai", "model", "system_response", "answerer"}
-    for seg in segs:
-        sp = (seg.get("speaker", "") or "").strip().lower()
-        txt = seg.get("text", "")
-        if not isinstance(txt, str):
-            try:
-                txt = str(txt)
-            except Exception:
-                txt = ""
-        txt = txt.strip()
-        if sp in user_aliases:
-            if txt:
-                pending_q = txt
-        elif sp in agent_aliases:
-            if pending_q and txt:
-                pairs.append((pending_q, txt))
-                pending_q = None
+
+    for i, seg in enumerate(segments):
+        speaker = _norm_speaker(seg.get("speaker", seg.get("role", "")))
+        text = seg.get("text")
+        if not isinstance(text, str):
+            text = str(text) if text is not None else ""
+        if debug:
+            print(f"[DBG] seg[{i}] speaker={speaker} text={text[:60]}")
+        if speaker in q_roles:
+            pending_q = text
+        elif speaker in a_roles and pending_q:
+            pairs.append((pending_q, text))
+            pending_q = None
+        else:
+            # 其他角色忽略
+            pass
     return pairs
 
 
-def to_train_item(question: str, answer: str, rel_img_path: str) -> dict:
-    return {
-        "qry": f"{IMAGE_TOKEN}\n{question}",
-        "qry_image_path": rel_img_path,
-        "pos_text": str(answer),
-        "pos_image_path": "",
-        "neg_text": "",
-        "neg_image_path": "",
-    }
-
-
-def to_test_item(question: str, answer: str, rel_img_path: str) -> dict:
-    return {
-        "qry_text": f"{IMAGE_TOKEN}\n{question}",
-        "qry_img_path": rel_img_path,
-        "tgt_text": [str(answer)],
-        "tgt_img_path": [""],
-    }
-
-
-def convert_chartgen_qa(
-    input_root: Path,
-    output_dir: Path,
-    test_count: int = 2000,
-    limit_train: Optional[int] = None,
-    limit_test: Optional[int] = None,
-    pairs_per_image: int = 2,
-    debug: bool = False,
-    input_path: Optional[Path] = None,
-    focus_index: Optional[int] = None,
-):
-    out_dir = ensure_dirs(output_dir)
-    files = [input_path] if input_path is not None else find_input_files(input_root)
-    if not files:
-        print(f"[ERROR] No .parquet or .jsonl files found under {input_root}")
-        return
-
-    print(f"[INFO] Found {len(files)} input files")
-
-    # 每张图片对应若干样本，按图片分组
-    examples_per_image: List[List[dict]] = []
-    images_seen = 0
-    total_pairs_collected = 0
-    missing_image_path = 0
-    non_train_image = 0
-    missing_qa_field = 0
-    empty_qa_pairs = 0
-
-    for fp in files:
-        print(f"[INFO] Reading {fp} ...")
+def parse_question_answers(raw: Any, debug: bool = False) -> List[Tuple[str, str]]:
+    """将多种 question_answers 表达形式解析为 (question, answer) 对列表。"""
+    if raw is None:
+        return []
+    # 字符串 -> 可能是 JSON
+    if isinstance(raw, str):
         try:
-            if str(fp).lower().endswith('.parquet'):
-                records = read_parquet_records(fp)
-            else:
-                records = read_jsonl_records(fp)
-        except Exception as e:
-            print(f"[WARN] Failed to read {fp}: {e}")
+            obj = json.loads(raw)
+        except Exception:
+            return []
+        raw = obj
+    # 字典 -> 优先找 utterances/dialog/question_answers/qa_cell
+    if isinstance(raw, dict):
+        keys = { _norm_key(k): k for k in raw.keys() }
+        for key_norm in ["utterances", "dialog", "question_answers", "qacell"]:
+            if key_norm in keys:
+                segments = raw[keys[key_norm]]
+                if isinstance(segments, list):
+                    return _extract_pairs_from_segments(segments, debug=debug)
+        # 单问答键（不常见），尝试直接拼一对
+        q = raw.get("question")
+        a = raw.get("answer")
+        if isinstance(q, str) and isinstance(a, str):
+            return [(q, a)]
+        return []
+    # 列表 -> 视为 utterances 列表
+    if isinstance(raw, list):
+        return _extract_pairs_from_segments(raw, debug=debug)
+    return []
+
+
+# --- 转换逻辑 ---
+def convert_records(records: List[Dict[str, Any]], split_hint: Optional[str], use_last_k: int, debug: bool = False) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    train_out: List[Dict[str, Any]] = []
+    test_out: List[Dict[str, Any]] = []
+    for rec in records:
+        image_path = rec.get("image_path") or rec.get("image") or ""
+        if not isinstance(image_path, str) or not image_path:
+            # 某些 parquet 可能仅包含 image bytes；本脚本不处理图片字节，直接跳过
+            if debug:
+                print("[DBG] 跳过记录：无有效 image_path")
             continue
+        split = split_hint or detect_split_from_path(image_path) or "train"
+        rel_img = make_rel_img_path(image_path, split)
+        qa_raw = rec.get("question_answers") or rec.get("qa_cell") or rec.get("utterances") or rec.get("dialog")
+        pairs = parse_question_answers(qa_raw, debug=debug)
+        if not pairs:
+            if debug:
+                print("[DBG] 未解析到 QA 对，跳过该条")
+            continue
+        if use_last_k and use_last_k > 0:
+            pairs = pairs[-use_last_k:]
+        for (q_text, a_text) in pairs:
+            q_text = str(q_text).strip()
+            a_text = str(a_text).strip()
+            if not q_text or not a_text:
+                continue
+            qry_with_token = f"{IMAGE_TOKEN}\n{q_text}"
+            if split == "train":
+                train_out.append({
+                    "qry": qry_with_token,
+                    "qry_image_path": rel_img,
+                    "pos_text": a_text,
+                    "pos_image_path": "",
+                    "neg_text": "",
+                    "neg_image_path": ""
+                })
+            else:
+                test_out.append({
+                    "qry_text": qry_with_token,
+                    "qry_img_path": rel_img,
+                    "tgt_text": [a_text],
+                    "tgt_img_path": [""]
+                })
+    return train_out, test_out
 
-        for idx, rec in enumerate(records):
-+            if focus_index is not None and idx != focus_index:
-+                continue
-             image_path = rec.get("image_path") or rec.get("image") or ""
-             if not isinstance(image_path, str) or not image_path:
-                 missing_image_path += 1
-                 if debug:
-                     print(f"[DEBUG] {fp.name} row {idx}: missing image_path; keys: {list(rec.keys())[:12]}")
-                 continue
-             # 仅使用 train split；原 test split 不参与生成
-             if "train/" not in image_path.replace("\\", "/"):
-                 non_train_image += 1
-                 if debug:
-                     print(f"[DEBUG] {fp.name} row {idx}: skip non-train image_path={image_path}")
-                 continue
 
-             # 定位 QA 列（兼容带空格的 'question answers'）
-             qa_cell, qa_key = find_qa_cell_from_record(rec)
-             if qa_cell is None:
-                 missing_qa_field += 1
-                 if debug:
-                     print(f"[DEBUG] {fp.name} row {idx}: no QA field found; keys: {list(rec.keys())}")
-                 continue
-
-             qa_pairs = extract_qa_pairs(qa_cell)
-             if not qa_pairs:
-                 empty_qa_pairs += 1
-                 if debug:
-                     print(f"[DEBUG] {fp.name} row {idx}: QA '{qa_key}' produced 0 pairs (type={type(qa_cell).__name__})")
-                     try:
-                         if isinstance(qa_cell, str):
-                             head = qa_cell[:200].replace("\n", "\\n")
-                             print(f"[DEBUG] Raw QA head: {head}...")
-+                        # 打印归一化后的前几个 segment 的角色与文本片段，便于定位不匹配原因
-+                        segs_dbg = parse_qa_segments(qa_cell)
-+                        roles = [s.get("speaker") for s in segs_dbg[:8]]
-+                        print(f"[DEBUG] Roles head: {roles}")
-+                        for j, s in enumerate(segs_dbg[:4]):
-+                            th = (s.get("text") or "")
-+                            if not isinstance(th, str):
-+                                try:
-+                                    th = str(th)
-+                                except Exception:
-+                                    th = ""
-+                            th = th.replace("\n", "\\n")
-+                            print(f"[DEBUG] seg{j}: speaker='{s.get('speaker')}', text='{th[:120]}...'")
-                         elif isinstance(qa_cell, dict):
-                             print(f"[DEBUG] QA dict keys: {list(qa_cell.keys())}")
-                         elif isinstance(qa_cell, list):
-                             print(f"[DEBUG] QA list length: {len(qa_cell)}; first seg: {qa_cell[0] if qa_cell else None}")
-                     except Exception:
-                         pass
-                 continue
-            use_pairs = qa_pairs[-pairs_per_image:] if len(qa_pairs) >= pairs_per_image else qa_pairs
-
-            basename = Path(image_path).name
-            rel_img_path = f"{CHARTGEN_PREFIX}/{TRAIN_SUBDIR}/{IMAGES_SUBDIR}/{basename}"
-
-            group_items: List[dict] = []
-            for q, a in use_pairs:
-                group_items.append(to_train_item(q, a, rel_img_path))
-            if debug and use_pairs:
-                sample_q = use_pairs[-1][0] if use_pairs else ""
-                print(f"[DEBUG] {fp.name} row {idx}: take {len(use_pairs)} pairs; last Q='{sample_q[:64]}'")
-            if group_items:
-                examples_per_image.append(group_items)
-                images_seen += 1
-                total_pairs_collected += len(group_items)
-
-    if not examples_per_image:
-        print("[ERROR] No QA pairs found; please verify input files contain 'question_answers' and 'image_path'.")
-        if debug:
-            print(f"[DEBUG] Skip stats: missing_image_path={missing_image_path}, non_train_image={non_train_image}, missing_qa_field={missing_qa_field}, empty_qa_pairs={empty_qa_pairs}")
-        return
-
-    # 切分：前 test_count 张图片的样本作为测试集，其余作为训练集
-    total_images = len(examples_per_image)
-    selected_for_test = examples_per_image[:test_count]
-    remaining_for_train = examples_per_image[test_count:]
-
-    test_items: List[dict] = []
-    for group in selected_for_test:
-        for it in group:
-            test_items.append({
-                "qry_text": it["qry"],
-                "qry_img_path": it["qry_image_path"],
-                "tgt_text": [it["pos_text"]],
-                "tgt_img_path": [""],
-            })
-
-    train_items: List[dict] = [it for group in remaining_for_train for it in group]
-
-    print(f"[INFO] Built image groups: {total_images}; test images: {len(selected_for_test)} -> test items: {len(test_items)}; remaining train images: {len(remaining_for_train)} -> train items: {len(train_items)}; pairs collected: {total_pairs_collected}")
-    if debug:
-        print(f"[DEBUG] Skip stats: missing_image_path={missing_image_path}, non_train_image={non_train_image}, missing_qa_field={missing_qa_field}, empty_qa_pairs={empty_qa_pairs}")
-
-    # 可选限制
-    if limit_train is not None:
-        train_items = train_items[:limit_train]
-    if limit_test is not None:
-        test_items = test_items[:limit_test]
-
-    # 保存输出
-    train_out = out_dir / "train_qa.jsonl"
-    test_out = out_dir / "test_qa.jsonl"
-
-    print(f"[INFO] Saving train set ({len(train_items)}) to {train_out}")
-    with open(train_out, "w", encoding="utf-8") as f:
-        for item in train_items:
-            f.write(json.dumps(item, ensure_ascii=False) + "\n")
-
-    print(f"[INFO] Saving test set ({len(test_items)}) to {test_out}")
-    with open(test_out, "w", encoding="utf-8") as f:
-        for item in test_items:
-            f.write(json.dumps(item, ensure_ascii=False) + "\n")
-
-    print("[DONE] QA conversion completed.")
-    print(f"Train QA JSONL: {train_out}")
-    print(f"Test QA JSONL: {test_out}")
+def find_input_files(input_dir: str) -> Tuple[List[str], List[str]]:
+    """递归扫描目录，返回 (train_files, test_files)，支持 .jsonl 与 .parquet。"""
+    train_files: List[str] = []
+    test_files: List[str] = []
+    for root, _, files in os.walk(input_dir):
+        for fn in files:
+            lower = fn.lower()
+            if lower.endswith(".jsonl") or lower.endswith(".parquet"):
+                full = os.path.join(root, fn)
+                if "train" in lower:
+                    train_files.append(full)
+                elif "test" in lower:
+                    test_files.append(full)
+                else:
+                    # 未标注，默认按 train 处理
+                    train_files.append(full)
+    return sorted(train_files), sorted(test_files)
 
 
 def main():
-    import argparse
-    parser = argparse.ArgumentParser(
-        description="Convert ChartGen-200K QA to MMCoIR JSONL (scan parquet/jsonl; test carved from train; per image take last 2 QA pairs; paths use chartgen/train/images)"
-    )
-    parser.add_argument("--input-root", default=str(DEFAULT_INPUT_ROOT), help="Input dataset root (local snapshot directory)")
-    parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="Output directory under MMCoIR/chartgen")
-    parser.add_argument("--test-count", type=int, default=2000, help="Number of images to carve out from train as test (default 2000)")
-    parser.add_argument("--pairs-per-image", type=int, default=2, help="Number of QA pairs to take per image (use last K)")
-    parser.add_argument("--limit-train", type=int, default=None, help="Optional limit for train items")
-    parser.add_argument("--limit-test", type=int, default=None, help="Optional limit for test items")
-    parser.add_argument("--debug", action="store_true", help="Print verbose debug info for field detection and parsing")
-    parser.add_argument("--input", type=str, default=None, help="Optional: single file to read (.parquet or .jsonl)")
-+    parser.add_argument("--focus-index", type=int, default=None, help="Optional: only process a specific 0-based row index in the input file")
+    parser = argparse.ArgumentParser(description="将 ChartGen question_answers 转为 QA 检索风格训练/测试 JSONL")
+    parser.add_argument("--input", help="输入文件（.jsonl 或 .parquet）", default=None)
+    parser.add_argument("--input-dir", help="输入目录（递归扫描 train/test 文件）", default=DEFAULT_INPUT_DIR)
+    parser.add_argument("--output-dir", help="输出根目录", default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument("--limit", type=int, default=None, help="每个文件最多读取的样本数")
+    parser.add_argument("--use-last-k", type=int, default=2, help="每张图使用末尾 K 组 QA 对")
+    parser.add_argument("--debug", action="store_true", help="打印解析调试信息")
     args = parser.parse_args()
 
-    convert_chartgen_qa(
-        input_root=Path(args.input_root),
-        output_dir=Path(args.output_dir),
-        test_count=args.test_count,
-        limit_train=args.limit_train,
-        limit_test=args.limit_test,
-        pairs_per_image=args.pairs_per_image,
-        debug=args.debug,
-        input_path=Path(args.input) if args.input else None,
-+        focus_index=args.focus_index,
-    )
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    file_list: List[Tuple[str, Optional[str]]] = []
+    if args.input:
+        base = os.path.basename(args.input).lower()
+        hint = "train" if "train" in base else ("test" if "test" in base else None)
+        file_list.append((args.input, hint))
+    else:
+        trains, tests = find_input_files(args.input_dir)
+        for p in trains:
+            file_list.append((p, "train"))
+        for p in tests:
+            file_list.append((p, "test"))
+
+    train_all: List[Dict[str, Any]] = []
+    test_all: List[Dict[str, Any]] = []
+    for path, split_hint in file_list:
+        print(f"[INFO] 读取: {path} (split hint: {split_hint})")
+        if path.lower().endswith(".jsonl"):
+            recs = read_jsonl(path, limit=args.limit)
+        else:
+            recs = read_parquet(path, limit=args.limit)
+        train_out, test_out = convert_records(recs, split_hint, use_last_k=args.use_last_k, debug=args.debug)
+        print(f"[OK] 转换完成: train {len(train_out)} / test {len(test_out)}")
+        train_all.extend(train_out)
+        test_all.extend(test_out)
+
+    train_path = os.path.join(args.output_dir, "train_qa.jsonl")
+    test_path = os.path.join(args.output_dir, "test_qa.jsonl")
+    save_jsonl(train_all, train_path)
+    save_jsonl(test_all, test_path)
+
+    print("\n==== 汇总 ====")
+    print(f"训练集样本数: {len(train_all)} -> {train_path}")
+    print(f"测试集样本数: {len(test_all)} -> {test_path}")
+    print("注意：输出的图片路径为相对路径，如 'chartgen/train/images/<filename>'；脚本不拷贝/校验图片。")
+    print("训练/评估时请将 image_root 设为 'MMCoIR'，并确保图片已放置到 'MMCoIR/chartgen/train/images/' 与 'MMCoIR/chartgen/test/images/'。")
 
 
 if __name__ == "__main__":
