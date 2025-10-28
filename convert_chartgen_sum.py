@@ -17,9 +17,11 @@
 
 测试集 JSONL 字段（与规范一致）:
 - qry_text: 带图像 token 的查询文本（包含 <|image_1|> 和指定 PROMPT）
-- qry_img_path: 查询图片相对路径（test/images/<filename>）
+- qry_img_path: 查询图片相对路径（来自 train/images/<filename>）
 - tgt_text: 目标文本列表（List[str]，此脚本使用 summary 列）
 - tgt_img_path: 目标图片路径列表（List[str]；此脚本无目标图像 -> [""]）
+
+额外说明：原始 test split 不参与生成；从 train 中按顺序抽取前 N=2000 条作为测试集，其余作为训练集。
 """
 
 import os
@@ -86,6 +88,7 @@ def convert_chartgen_sum(
     output_dir: Path,
     limit_train: int = None,
     limit_test: int = None,
+    test_count: int = 2000,
 ):
     out_dir, train_images_dir, test_images_dir = ensure_dirs(output_dir)
     parquet_files = find_parquet_files(input_root)
@@ -96,7 +99,6 @@ def convert_chartgen_sum(
     print(f"[INFO] Found {len(parquet_files)} parquet files")
 
     train_items: List[dict] = []
-    test_items: List[dict] = []
 
     for pq in parquet_files:
         print(f"[INFO] Reading {pq} ...")
@@ -120,27 +122,38 @@ def convert_chartgen_sum(
                 image_path = str(row.get("image_path", "")).strip()
                 if not image_path:
                     continue
-                # 从路径判断分割
-                split = "train" if "train/" in image_path else ("test" if "test/" in image_path else None)
+                # 仅使用 train split；原 test split 不参与生成
+                split = "train" if "train/" in image_path else None
                 if split is None:
                     continue
 
                 summary = row.get("summary", "")
                 basename = Path(image_path).name
-                rel_img_path = (
-                    f"chartgen/{TRAIN_SUBDIR}/{IMAGES_SUBDIR}/{basename}" if split == "train"
-                    else f"chartgen/{TEST_SUBDIR}/{IMAGES_SUBDIR}/{basename}"
-                )
+                rel_img_path = f"chartgen/{TRAIN_SUBDIR}/{IMAGES_SUBDIR}/{basename}"
 
-                if split == "train":
-                    item = to_train_item(summary, rel_img_path)
-                    train_items.append(item)
-                else:  # test
-                    item = to_test_item(summary, rel_img_path)
-                    test_items.append(item)
+                item = to_train_item(summary, rel_img_path)
+                train_items.append(item)
             except Exception as e:
                 print(f"[WARN] Failed processing row {idx} in {pq}: {e}")
                 continue
+
+    # 从 train 抽取前 test_count 条作为测试集，其余作为训练集
+    original_train_count = len(train_items)
+    selected_for_test = train_items[:test_count]
+    # 将选出的训练项转换为测试集格式
+    test_items = [
+        {
+            "qry_text": it["qry"],
+            "qry_img_path": it["qry_image_path"],
+            "tgt_text": [it["pos_text"]],
+            "tgt_img_path": [""],
+        }
+        for it in selected_for_test
+    ]
+    # 剩余训练集
+    train_items = train_items[test_count:]
+
+    print(f"[INFO] Built train pool: {original_train_count} items; test split: {len(test_items)}; remaining train: {len(train_items)}")
 
     # 应用限制（可选）
     if limit_train is not None:
@@ -172,12 +185,13 @@ def convert_chartgen_sum(
 def main():
     import argparse
     parser = argparse.ArgumentParser(
-        description="Convert ChartGen-200K to MMCoIR SUM JSONL (no image copy; paths use train/images & test/images)"
+        description="Convert ChartGen-200K to MMCoIR SUM JSONL (no image copy; test split sampled from train; paths use chartgen/train/images)"
     )
     parser.add_argument("--input-root", default=str(DEFAULT_INPUT_ROOT), help="Input dataset root (local snapshot)")
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="Output directory under MMCoIR/chartgen")
     parser.add_argument("--limit-train", type=int, default=None, help="Optional limit for train samples")
     parser.add_argument("--limit-test", type=int, default=None, help="Optional limit for test samples")
+    parser.add_argument("--test-count", type=int, default=2000, help="Number of samples to carve out from train as test (default 2000)")
     args = parser.parse_args()
 
     convert_chartgen_sum(
@@ -185,6 +199,7 @@ def main():
         output_dir=Path(args.output_dir),
         limit_train=args.limit_train,
         limit_test=args.limit_test,
+        test_count=args.test_count,
     )
 
 
