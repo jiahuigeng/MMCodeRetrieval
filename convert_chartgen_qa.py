@@ -3,14 +3,18 @@
 将 SD122025/ChartGen-200K 转换为基于 QA 的多模态检索格式，
 在同一目标文件夹下生成 train_qa.jsonl 与 test_qa.jsonl。
 
-- Input: 本地数据位于 datasets/ChartGen-200K （通过 download_chartgen.py 下载）
+- Input: 本地数据位于 datasets/ChartGen-200K （通过 download_chartgen.py 下载，或手动拷贝）
 - Output: JSONL 文件位于 MMCoIR/chartgen/{train_qa.jsonl, test_qa.jsonl}
 - Images: 仅写出相对路径，不复制图片，不校验图片存在性。
 
 构建规则：
-- 仅处理 train split 行；从训练集中按顺序抽取前 N=2000 张图片作为测试集，其余作为训练集。
-- 每张图片从 question_answers（或嵌套的 utterances）里提取成对的问答（user -> agent），优先选择靠后的两个问答对。
-- 对每个问答对构建一个样本：
+- 递归扫描 input-root 下的所有 .parquet 与 .jsonl，逐条读取记录。
+- 仅处理 image_path 含 "train/" 的样本；从训练集中按顺序抽取前 N=2000 张图片作为测试集，其余作为训练集。
+- question_answers 支持三种形态：
+  1) list[dict]，每个 dict 有 speaker/text
+  2) dict 包含 key 'utterances' 或 'dialogs' 为列表
+  3) str（JSON 字符串），上述两种之一
+- 每张图片挑选靠后的 K=2 个 (question, answer) 对；为每个对构建一个样本：
   - 训练集字段：
     - qry: "<|image_1|>\n" + question
     - qry_image_path: 相对路径 "chartgen/train/images/<filename>"
@@ -30,8 +34,6 @@ import json
 from pathlib import Path
 from typing import List, Tuple, Dict, Optional
 
-import pandas as pd
-
 REPO_ROOT = Path(__file__).parent
 DEFAULT_INPUT_ROOT = REPO_ROOT / "datasets" / "ChartGen-200K"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "MMCoIR" / "chartgen"
@@ -41,21 +43,48 @@ TRAIN_SUBDIR = "train"
 IMAGE_TOKEN = "<|image_1|>"
 
 
-def ensure_dirs(out_dir: Path) -> Tuple[Path, Path]:
+def ensure_dirs(out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
-    train_images_dir = out_dir / TRAIN_SUBDIR / IMAGES_SUBDIR
-    train_images_dir.mkdir(parents=True, exist_ok=True)
-    # 不复制图片，仅确保路径存在性（可选）
-    return out_dir, train_images_dir
+    # 仅确保输出根目录存在；脚本不复制图片
+    return out_dir
 
 
-def find_parquet_files(root: Path) -> List[Path]:
-    parquet_files: List[Path] = []
-    for r, _dirs, files in os.walk(root):
-        for fn in files:
-            if fn.lower().endswith(".parquet"):
-                parquet_files.append(Path(r) / fn)
-    return sorted(parquet_files)
+def find_input_files(root: Path) -> List[Path]:
+    files: List[Path] = []
+    for r, _dirs, fnames in os.walk(root):
+        for fn in fnames:
+            lower = fn.lower()
+            if lower.endswith('.parquet') or lower.endswith('.jsonl'):
+                files.append(Path(r) / fn)
+    return sorted(files)
+
+
+def read_parquet_records(path: Path, limit: Optional[int] = None) -> List[Dict]:
+    try:
+        import pandas as pd  # type: ignore
+    except Exception:
+        raise RuntimeError("读取 parquet 需要 pandas/pyarrow，请先安装：pip install pandas pyarrow")
+    df = pd.read_parquet(path)
+    if limit is not None:
+        df = df.head(limit)
+    return [row.to_dict() for _, row in df.iterrows()]
+
+
+def read_jsonl_records(path: Path, limit: Optional[int] = None) -> List[Dict]:
+    out: List[Dict] = []
+    with open(path, 'r', encoding='utf-8') as f:
+        for i, line in enumerate(f):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except Exception:
+                continue
+            out.append(rec)
+            if limit is not None and len(out) >= limit:
+                break
+    return out
 
 
 def parse_qa_segments(qa_cell: object) -> List[Dict[str, str]]:
@@ -154,74 +183,72 @@ def convert_chartgen_qa(
     limit_test: Optional[int] = None,
     pairs_per_image: int = 2,
 ):
-    out_dir, train_images_dir = ensure_dirs(output_dir)
-    parquet_files = find_parquet_files(input_root)
-    if not parquet_files:
-        print(f"[ERROR] No parquet files found under {input_root}")
+    out_dir = ensure_dirs(output_dir)
+    files = find_input_files(input_root)
+    if not files:
+        print(f"[ERROR] No .parquet or .jsonl files found under {input_root}")
         return
 
-    print(f"[INFO] Found {len(parquet_files)} parquet files")
+    print(f"[INFO] Found {len(files)} input files")
 
-    # 每张图片对应一组训练样本（若可用则为若干条）
+    # 每张图片对应若干样本，按图片分组
     examples_per_image: List[List[dict]] = []
+    images_seen = 0
+    total_pairs_collected = 0
 
-    for pq in parquet_files:
-        print(f"[INFO] Reading {pq} ...")
+    for fp in files:
+        print(f"[INFO] Reading {fp} ...")
         try:
-            df = pd.read_parquet(pq)
+            if str(fp).lower().endswith('.parquet'):
+                records = read_parquet_records(fp)
+            else:
+                records = read_jsonl_records(fp)
         except Exception as e:
-            print(f"[WARN] Failed to read {pq}: {e}")
+            print(f"[WARN] Failed to read {fp}: {e}")
             continue
 
-        cols = df.columns.tolist()
-        if "image_path" not in cols:
-            print(f"[WARN] 'image_path' missing in {pq}; skipping this file")
-            continue
-        qa_col = None
-        for cand in ["question_answers", "qa", "utterances", "dialogs"]:
-            if cand in cols:
-                qa_col = cand
-                break
-        if qa_col is None:
-            print(f"[WARN] QA column missing in {pq}; expected one of question_answers/qa/utterances/dialogs")
-            continue
-
-        df = df[["image_path", qa_col]]
-
-        for idx, row in df.iterrows():
-            try:
-                image_path = str(row.get("image_path", "")).strip()
-                if not image_path:
-                    continue
-                # 仅使用 train split；原 test split 不参与生成
-                split = "train" if "train/" in image_path else None
-                if split is None:
-                    continue
-
-                qa_pairs = extract_qa_pairs(row.get(qa_col))
-                if not qa_pairs:
-                    continue
-                # 选择靠后的若干问答对
-                use_pairs = qa_pairs[-pairs_per_image:] if len(qa_pairs) >= pairs_per_image else qa_pairs
-
-                basename = Path(image_path).name
-                rel_img_path = f"{CHARTGEN_PREFIX}/{TRAIN_SUBDIR}/{IMAGES_SUBDIR}/{basename}"
-
-                group_items: List[dict] = []
-                for q, a in use_pairs:
-                    group_items.append(to_train_item(q, a, rel_img_path))
-                if group_items:
-                    examples_per_image.append(group_items)
-            except Exception as e:
-                print(f"[WARN] Failed processing row {idx} in {pq}: {e}")
+        for idx, rec in enumerate(records):
+            image_path = rec.get("image_path") or rec.get("image") or ""
+            if not isinstance(image_path, str) or not image_path:
+                continue
+            # 仅使用 train split；原 test split 不参与生成
+            if "train/" not in image_path.replace("\\", "/"):
                 continue
 
-    # 按图片切分：前 test_count 张图片的样本作为测试集，其余作为训练集
+            # 定位 QA 列
+            qa_cell = None
+            for cand in ("question_answers", "qa", "utterances", "dialogs"):
+                if cand in rec:
+                    qa_cell = rec.get(cand)
+                    break
+            if qa_cell is None:
+                continue
+
+            qa_pairs = extract_qa_pairs(qa_cell)
+            if not qa_pairs:
+                continue
+            use_pairs = qa_pairs[-pairs_per_image:] if len(qa_pairs) >= pairs_per_image else qa_pairs
+
+            basename = Path(image_path).name
+            rel_img_path = f"{CHARTGEN_PREFIX}/{TRAIN_SUBDIR}/{IMAGES_SUBDIR}/{basename}"
+
+            group_items: List[dict] = []
+            for q, a in use_pairs:
+                group_items.append(to_train_item(q, a, rel_img_path))
+            if group_items:
+                examples_per_image.append(group_items)
+                images_seen += 1
+                total_pairs_collected += len(group_items)
+
+    if not examples_per_image:
+        print("[ERROR] No QA pairs found; please verify input files contain 'question_answers' and 'image_path'.")
+        return
+
+    # 切分：前 test_count 张图片的样本作为测试集，其余作为训练集
     total_images = len(examples_per_image)
     selected_for_test = examples_per_image[:test_count]
     remaining_for_train = examples_per_image[test_count:]
 
-    # 将训练样本映射为测试格式
     test_items: List[dict] = []
     for group in selected_for_test:
         for it in group:
@@ -234,7 +261,7 @@ def convert_chartgen_qa(
 
     train_items: List[dict] = [it for group in remaining_for_train for it in group]
 
-    print(f"[INFO] Built image groups: {total_images}; test images: {len(selected_for_test)} -> test items: {len(test_items)}; remaining train images: {len(remaining_for_train)} -> train items: {len(train_items)}")
+    print(f"[INFO] Built image groups: {total_images}; test images: {len(selected_for_test)} -> test items: {len(test_items)}; remaining train images: {len(remaining_for_train)} -> train items: {len(train_items)}; pairs collected: {total_pairs_collected}")
 
     # 可选限制
     if limit_train is not None:
@@ -257,7 +284,6 @@ def convert_chartgen_qa(
             f.write(json.dumps(item, ensure_ascii=False) + "\n")
 
     print("[DONE] QA conversion completed.")
-    print(f"Train images directory (for path reference): {train_images_dir}")
     print(f"Train QA JSONL: {train_out}")
     print(f"Test QA JSONL: {test_out}")
 
@@ -265,9 +291,9 @@ def convert_chartgen_qa(
 def main():
     import argparse
     parser = argparse.ArgumentParser(
-        description="Convert ChartGen-200K QA to MMCoIR JSONL (test carved from train; per image take last 2 QA pairs; paths use chartgen/train/images)"
+        description="Convert ChartGen-200K QA to MMCoIR JSONL (scan parquet/jsonl; test carved from train; per image take last 2 QA pairs; paths use chartgen/train/images)"
     )
-    parser.add_argument("--input-root", default=str(DEFAULT_INPUT_ROOT), help="Input dataset root (local snapshot)")
+    parser.add_argument("--input-root", default=str(DEFAULT_INPUT_ROOT), help="Input dataset root (local snapshot directory)")
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="Output directory under MMCoIR/chartgen")
     parser.add_argument("--test-count", type=int, default=2000, help="Number of images to carve out from train as test (default 2000)")
     parser.add_argument("--pairs-per-image", type=int, default=2, help="Number of QA pairs to take per image (use last K)")
