@@ -22,7 +22,7 @@ from typing import List, Tuple
 import pandas as pd
 
 REPO_ROOT = Path(__file__).parent
-DEFAULT_INPUT_ROOT = REPO_ROOT / "datasets" / "ChartGen-200k" / "data"
+DEFAULT_INPUT_ROOT = REPO_ROOT / "datasets" / "ChartGen-200K" / "data"
 TRAIN_ROOT_DEFAULT = REPO_ROOT / "MMCoIR-train" / "ChartGen"
 TEST_ROOT_DEFAULT = REPO_ROOT / "MMCoIR-test" / "ChartGen"
 IMAGES_SUBDIR = "images"
