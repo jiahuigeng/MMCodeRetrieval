@@ -93,6 +93,15 @@ class JSONLFormatChecker:
                     if not isinstance(sample[field], str):
                         errors.append(f"行 {line_num}: 字段 '{field}' 应该是字符串类型，实际类型: {type(sample[field])}")
         
+        # 检查列表长度一致性（tgt_text 与 tgt_img_path）
+        if 'tgt_text' in sample and 'tgt_img_path' in sample:
+            if isinstance(sample['tgt_text'], list) and isinstance(sample['tgt_img_path'], list):
+                if len(sample['tgt_text']) != len(sample['tgt_img_path']):
+                    errors.append(
+                        f"行 {line_num}: 'tgt_text' 与 'tgt_img_path' 长度不一致: "
+                        f"{len(sample['tgt_text'])} != {len(sample['tgt_img_path'])}"
+                    )
+        
         # 检查特定字段内容
         if 'qry_text' in sample and isinstance(sample['qry_text'], str):
             if not sample['qry_text'].startswith('<|image_1|>'):
@@ -104,18 +113,25 @@ class JSONLFormatChecker:
         
         if 'tgt_img_path' in sample and isinstance(sample['tgt_img_path'], list):
             for i, path in enumerate(sample['tgt_img_path']):
-                if isinstance(path, str) and not path.endswith(('.png', '.jpg', '.jpeg')):
-                    errors.append(f"行 {line_num}: 'tgt_img_path[{i}]' 应该是图片文件路径")
+                if isinstance(path, str):
+                    # 允许空字符串占位，不做后缀校验
+                    if path == "":
+                        continue
+                    if not path.endswith(('.png', '.jpg', '.jpeg')):
+                        errors.append(f"行 {line_num}: 'tgt_img_path[{i}]' 应该是图片文件路径或空字符串占位")
         
         return errors
     
-    def check_jsonl_file(self, file_path: str, split: str) -> Tuple[bool, List[str], Dict[str, Any]]:
+    def check_jsonl_file(self, file_path: str, split: str, img_root: str = None, check_images_count: int = 0, allow_missing_images: bool = False) -> Tuple[bool, List[str], Dict[str, Any]]:
         """
-        检查JSONL文件格式
+        检查JSONL文件格式，并可选抽样检查图片文件是否存在
         
         Args:
             file_path: JSONL文件路径
             split: 数据集类型 ('train' 或 'test')
+            img_root: 图片根目录（当 JSONL 中为相对路径时，会拼接到该根目录）
+            check_images_count: 抽样检查图片存在性的数量（0 表示不检查）
+            allow_missing_images: 允许图片缺失不计为错误（仅记录告警）
         
         Returns:
             (is_valid, errors, stats)
@@ -132,9 +148,26 @@ class JSONLFormatChecker:
             'valid_lines': 0,
             'invalid_lines': 0,
             'empty_lines': 0,
-            'json_parse_errors': 0
+            'json_parse_errors': 0,
+            # 图片存在性抽样检查统计
+            'image_paths_checked': 0,
+            'image_paths_missing_count': 0,
+            'image_paths_missing_samples': [],  # [(line_num, field, path)]
         }
         
+        def make_abs_path(p: str) -> str:
+            # 绝对路径直接返回；相对路径拼接 img_root（若提供）
+            if os.path.isabs(p):
+                return p
+            clean = p.lstrip('./\\')
+            if img_root:
+                # 如果路径已经以 img_root 开头，则直接使用；否则拼接
+                if clean.startswith(img_root):
+                    return clean
+                return os.path.join(img_root, clean)
+            return clean
+        
+        checked = 0
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 for line_num, line in enumerate(f, 1):
@@ -164,6 +197,53 @@ class JSONLFormatChecker:
                         errors.extend(sample_errors)
                     else:
                         stats['valid_lines'] += 1
+                    
+                    # 图片存在性抽样检查（最多 check_images_count 个）
+                    if check_images_count and checked < check_images_count:
+                        if split == 'train':
+                            for field in ['qry_image_path', 'pos_image_path', 'neg_image_path']:
+                                if checked >= check_images_count:
+                                    break
+                                if field in sample and isinstance(sample[field], str):
+                                    rel = sample[field]
+                                    abs_p = make_abs_path(rel)
+                                    exists = os.path.exists(abs_p)
+                                    stats['image_paths_checked'] += 1
+                                    checked += 1
+                                    if not exists:
+                                        stats['image_paths_missing_count'] += 1
+                                        stats['image_paths_missing_samples'].append((line_num, field, abs_p))
+                                        if not allow_missing_images:
+                                            errors.append(f"行 {line_num}: 图片不存在: {field} -> {abs_p}")
+                        else:  # test
+                            # 先检查 qry_img_path
+                            if checked < check_images_count and 'qry_img_path' in sample and isinstance(sample['qry_img_path'], str):
+                                rel = sample['qry_img_path']
+                                abs_p = make_abs_path(rel)
+                                exists = os.path.exists(abs_p)
+                                stats['image_paths_checked'] += 1
+                                checked += 1
+                                if not exists:
+                                    stats['image_paths_missing_count'] += 1
+                                    stats['image_paths_missing_samples'].append((line_num, 'qry_img_path', abs_p))
+                                    if not allow_missing_images:
+                                        errors.append(f"行 {line_num}: 图片不存在: qry_img_path -> {abs_p}")
+                            # 再检查 tgt_img_path（非空项）
+                            if checked < check_images_count and 'tgt_img_path' in sample and isinstance(sample['tgt_img_path'], list):
+                                for path in sample['tgt_img_path']:
+                                    if checked >= check_images_count:
+                                        break
+                                    if not isinstance(path, str) or path == "":
+                                        continue  # 跳过占位或非字符串
+                                    abs_p = make_abs_path(path)
+                                    exists = os.path.exists(abs_p)
+                                    stats['image_paths_checked'] += 1
+                                    checked += 1
+                                    if not exists:
+                                        stats['image_paths_missing_count'] += 1
+                                        stats['image_paths_missing_samples'].append((line_num, 'tgt_img_path', abs_p))
+                                        if not allow_missing_images:
+                                            errors.append(f"行 {line_num}: 图片不存在: tgt_img_path -> {abs_p}")
         
         except Exception as e:
             return False, [f"读取文件时发生错误: {e}"], stats
@@ -186,6 +266,17 @@ class JSONLFormatChecker:
         print(f"  空行数: {stats.get('empty_lines', 0)}")
         print(f"  JSON解析错误: {stats.get('json_parse_errors', 0)}")
         
+        # 图片存在性抽样检查汇报
+        if stats.get('image_paths_checked', 0) > 0:
+            print(f"\n图片存在性抽样检查:")
+            print(f"  抽样检查数量: {stats.get('image_paths_checked', 0)}")
+            print(f"  缺失图片数量: {stats.get('image_paths_missing_count', 0)}")
+            missing = stats.get('image_paths_missing_samples', [])
+            if missing:
+                print(f"  缺失样例(最多显示10条):")
+                for i, (line_num, field, path) in enumerate(missing[:10], 1):
+                    print(f"    {i}. 行 {line_num} - {field}: {path}")
+        
         if errors:
             print(f"\n发现的错误 ({len(errors)} 个):")
             for i, error in enumerate(errors[:20], 1):  # 只显示前20个错误
@@ -202,11 +293,21 @@ def main():
     parser.add_argument('jsonl_path', help='JSONL文件路径')
     parser.add_argument('split', choices=['train', 'test'], help='数据集类型 (train 或 test)')
     parser.add_argument('--quiet', '-q', action='store_true', help='静默模式，只输出结果')
+    # 新增：图片存在性抽样检查参数
+    parser.add_argument('--check-images', type=int, default=10, help='抽样检查图片存在性的数量 (0 禁用，默认 10)')
+    parser.add_argument('--img-root', type=str, default='MMCoIR', help='图片根目录，用于拼接相对路径 (默认 MMCoIR)')
+    parser.add_argument('--allow-missing-images', action='store_true', help='允许图片缺失不计为错误，仅记录告警')
     
     args = parser.parse_args()
     
     checker = JSONLFormatChecker()
-    is_valid, errors, stats = checker.check_jsonl_file(args.jsonl_path, args.split)
+    is_valid, errors, stats = checker.check_jsonl_file(
+        args.jsonl_path,
+        args.split,
+        img_root=args.img_root,
+        check_images_count=args.check_images,
+        allow_missing_images=args.allow_missing_images,
+    )
     
     if not args.quiet:
         checker.print_report(args.jsonl_path, args.split, is_valid, errors, stats)

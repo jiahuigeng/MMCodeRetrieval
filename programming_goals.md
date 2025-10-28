@@ -28,18 +28,18 @@
 
 ### 测试集格式
 每个 item 包含以下字段：
-- `qry_text`: 查询文本
-- `qry_img_path`: 查询图片路径
-- `tgt_text`: 目标文本
-- `tgt_img_path`: 目标图片路径
+- `qry_text`: 查询文本（字符串，需以 `<|image_1|>` 开头）
+- `qry_img_path`: 查询图片路径（字符串，相对路径）
+- `tgt_text`: 目标文本列表（List[str]）
+- `tgt_img_path`: 目标图片路径列表（List[str]；与 `tgt_text` 等长；无目标图时使用 `""` 占位）
 
 **测试集示例：**
 ```json
 {
-  "qry_text": "查询文本内容",
+  "qry_text": "<|image_1|>查询文本内容",
   "qry_img_path": "path/to/query/image.jpg",
-  "tgt_text": "目标文本内容",
-  "tgt_img_path": "path/to/target/image.jpg"
+  "tgt_text": ["目标文本内容"],
+  "tgt_img_path": [""]
 }
 ```
 

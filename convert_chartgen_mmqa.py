@@ -143,8 +143,8 @@ def convert_records(records: List[Dict], split_hint: Optional[str], prefer_last_
             test_out.append({
                 "qry_text": qry_with_token,
                 "qry_img_path": rel_img,
-                "tgt_text": agent_text,
-                "tgt_img_path": ""
+                "tgt_text": [agent_text],
+                "tgt_img_path": [""]
             })
     return train_out, test_out
 
