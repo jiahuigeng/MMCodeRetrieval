@@ -106,17 +106,17 @@ def main():
     test_root = Path(args.test_root)
     train_images_dir, test_images_dir = ensure_dirs(train_root, test_root)
 
-    train_parquets = find_parquet_files(input_root / TRAIN_SUBDIR)
-    test_parquets = find_parquet_files(input_root / TEST_SUBDIR)
-    if not train_parquets and not test_parquets:
+    print(f"[INFO] Scanning parquet under {input_root}")
+    parquets = find_parquet_files(input_root)
+    if not parquets:
         raise SystemExit(f"No parquet files found under {input_root}")
-    print(f"[INFO] Found {len(train_parquets)} train parquets, {len(test_parquets)} test parquets")
+    print(f"[INFO] Found {len(parquets)} parquet files")
 
     train_candidates: List[Tuple[str, str]] = []  # (basename, code)
     test_candidates: List[Tuple[str, str]] = []
 
-    for pq in train_parquets:
-        print(f"[INFO] Reading train {pq} ...")
+    for pq in parquets:
+        print(f"[INFO] Reading {pq} ...")
         try:
             df = pd.read_parquet(pq)
         except Exception as e:
@@ -137,34 +137,10 @@ def main():
                     continue
                 code = row.get("code", "")
                 basename = Path(image_path).name
-                train_candidates.append((basename, code))
-            except Exception as e:
-                print(f"[WARN] Row parse error in {pq}: {e}")
-                continue
-
-    for pq in test_parquets:
-        print(f"[INFO] Reading test {pq} ...")
-        try:
-            df = pd.read_parquet(pq)
-        except Exception as e:
-            print(f"[WARN] Failed to read {pq}: {e}")
-            continue
-
-        cols = df.columns.tolist()
-        if "image_path" not in cols:
-            print(f"[WARN] 'image_path' missing in {pq}; skip")
-            continue
-        keep_cols = [c for c in ["image_path", "summary", "code"] if c in cols]
-        df = df[keep_cols]
-
-        for _idx, row in df.iterrows():
-            try:
-                image_path = str(row.get("image_path", "")).strip()
-                if not image_path:
-                    continue
-                code = row.get("code", "")
-                basename = Path(image_path).name
-                test_candidates.append((basename, code))
+                if "train/" in image_path:
+                    train_candidates.append((basename, code))
+                elif "test/" in image_path:
+                    test_candidates.append((basename, code))
             except Exception as e:
                 print(f"[WARN] Row parse error in {pq}: {e}")
                 continue
@@ -199,9 +175,9 @@ def main():
             f.write(json.dumps(it, ensure_ascii=False) + "\n")
 
     # Copy images
-    # Source dirs in input dataset
-    src_train_images = input_root / TRAIN_SUBDIR / IMAGES_SUBDIR
-    src_test_images = input_root / TEST_SUBDIR / IMAGES_SUBDIR
+    # Source dirs in input dataset (parent of 'data')
+    src_train_images = input_root.parent / TRAIN_SUBDIR / IMAGES_SUBDIR
+    src_test_images = input_root.parent / TEST_SUBDIR / IMAGES_SUBDIR
 
     print(f"[INFO] Copying train images -> {train_images_dir}")
     miss_train = 0
