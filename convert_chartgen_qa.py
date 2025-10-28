@@ -130,6 +130,22 @@ def parse_qa_segments(qa_cell: object) -> List[Dict[str, str]]:
     return segments
 
 
+def find_qa_cell_from_record(rec: Dict) -> Tuple[Optional[object], Optional[str]]:
+    """Locate QA field in a record, supporting aliases like 'question_answers', 'question answers', 'qa', 'utterances', 'dialogs'."""
+    if not isinstance(rec, dict):
+        return None, None
+    # Prefer normalized key matching
+    for key in rec.keys():
+        norm = key.strip().lower().replace(" ", "_")
+        if norm in ("question_answers", "qa", "utterances", "dialogs"):
+            return rec.get(key), key
+    # Fallback: direct exact names including space variant
+    for cand in ("question_answers", "question answers", "qa", "utterances", "dialogs"):
+        if cand in rec:
+            return rec.get(cand), cand
+    return None, None
+
+
 def extract_qa_pairs(qa_cell: object) -> List[Tuple[str, str]]:
     """从 QA 单元中提取成对的 (question, answer)。
     逻辑：遇到 user 记为待匹配的 question，遇到 agent/assistant 则与最近的 question 匹配成对。
@@ -182,6 +198,7 @@ def convert_chartgen_qa(
     limit_train: Optional[int] = None,
     limit_test: Optional[int] = None,
     pairs_per_image: int = 2,
+    debug: bool = False,
 ):
     out_dir = ensure_dirs(output_dir)
     files = find_input_files(input_root)
@@ -195,6 +212,10 @@ def convert_chartgen_qa(
     examples_per_image: List[List[dict]] = []
     images_seen = 0
     total_pairs_collected = 0
+    missing_image_path = 0
+    non_train_image = 0
+    missing_qa_field = 0
+    empty_qa_pairs = 0
 
     for fp in files:
         print(f"[INFO] Reading {fp} ...")
@@ -210,22 +231,30 @@ def convert_chartgen_qa(
         for idx, rec in enumerate(records):
             image_path = rec.get("image_path") or rec.get("image") or ""
             if not isinstance(image_path, str) or not image_path:
+                missing_image_path += 1
+                if debug:
+                    print(f"[DEBUG] {fp.name} row {idx}: missing image_path; keys: {list(rec.keys())[:12]}")
                 continue
             # 仅使用 train split；原 test split 不参与生成
             if "train/" not in image_path.replace("\\", "/"):
+                non_train_image += 1
+                if debug:
+                    print(f"[DEBUG] {fp.name} row {idx}: skip non-train image_path={image_path}")
                 continue
 
-            # 定位 QA 列
-            qa_cell = None
-            for cand in ("question_answers", "qa", "utterances", "dialogs"):
-                if cand in rec:
-                    qa_cell = rec.get(cand)
-                    break
+            # 定位 QA 列（兼容带空格的 'question answers'）
+            qa_cell, qa_key = find_qa_cell_from_record(rec)
             if qa_cell is None:
+                missing_qa_field += 1
+                if debug:
+                    print(f"[DEBUG] {fp.name} row {idx}: no QA field found; keys: {list(rec.keys())}")
                 continue
 
             qa_pairs = extract_qa_pairs(qa_cell)
             if not qa_pairs:
+                empty_qa_pairs += 1
+                if debug:
+                    print(f"[DEBUG] {fp.name} row {idx}: QA '{qa_key}' produced 0 pairs (type={type(qa_cell).__name__})")
                 continue
             use_pairs = qa_pairs[-pairs_per_image:] if len(qa_pairs) >= pairs_per_image else qa_pairs
 
@@ -235,6 +264,9 @@ def convert_chartgen_qa(
             group_items: List[dict] = []
             for q, a in use_pairs:
                 group_items.append(to_train_item(q, a, rel_img_path))
+            if debug and use_pairs:
+                sample_q = use_pairs[-1][0] if use_pairs else ""
+                print(f"[DEBUG] {fp.name} row {idx}: take {len(use_pairs)} pairs; last Q='{sample_q[:64]}'")
             if group_items:
                 examples_per_image.append(group_items)
                 images_seen += 1
@@ -242,6 +274,8 @@ def convert_chartgen_qa(
 
     if not examples_per_image:
         print("[ERROR] No QA pairs found; please verify input files contain 'question_answers' and 'image_path'.")
+        if debug:
+            print(f"[DEBUG] Skip stats: missing_image_path={missing_image_path}, non_train_image={non_train_image}, missing_qa_field={missing_qa_field}, empty_qa_pairs={empty_qa_pairs}")
         return
 
     # 切分：前 test_count 张图片的样本作为测试集，其余作为训练集
