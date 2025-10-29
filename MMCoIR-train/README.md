@@ -8,6 +8,14 @@ configs:
   data_files:
   - split: train
     path: Chart2Code/train.jsonl
+- config_name: MMSVG-Icon
+  data_files:
+  - split: train
+    path: MMSVG-Icon/train.jsonl
+- config_name: MMSVG-Illustration
+  data_files:
+  - split: train
+    path: MMSVG-Illustration/train.jsonl
 ---
 
 # MMCoIR-train Dataset

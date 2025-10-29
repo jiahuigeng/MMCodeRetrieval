@@ -45,6 +45,59 @@ def write_svg(svg_code: str, svg_path: Path, resume: bool = True):
         return
     svg_path.write_text(svg_code, encoding="utf-8")
 
+def count_lines(path: Path) -> int:
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            return sum(1 for _ in f)
+    except Exception:
+        return 0
+
+def count_svg_files(dir_path: Path) -> int:
+    if not dir_path.exists():
+        return 0
+    try:
+        return sum(1 for p in dir_path.glob("*.svg") if p.is_file())
+    except Exception:
+        return 0
+
+def dataset_ready(
+    output_root: Path,
+    ds_slug: str,
+    split: Optional[str],
+    require_jsonl: bool,
+    require_svg: bool,
+    min_count: Optional[int] = None,
+) -> bool:
+    """Return True if local artifacts indicate dataset is already downloaded.
+
+    Priority: JSONL presence is considered sufficient when requested.
+    If JSONL is not requested, fall back to checking SVG files.
+    """
+    out_dir = output_root / ds_slug
+    jsonl_ok = True
+    svg_ok = True
+
+    if require_jsonl:
+        split_name = (split or "all").replace("/", "_")
+        jsonl_path = out_dir / f"{split_name}.jsonl"
+        if not jsonl_path.exists():
+            jsonl_ok = False
+        else:
+            cnt = count_lines(jsonl_path)
+            jsonl_ok = (cnt >= (min_count or 1))
+        # JSONL presence is sufficient to skip
+        if jsonl_ok:
+            return True
+
+    if require_svg:
+        svgs_dir = out_dir / "svgs"
+        svg_cnt = count_svg_files(svgs_dir)
+        svg_ok = (svg_cnt >= (min_count or 1))
+        if svg_ok:
+            return True
+
+    return False
+
 
 def load_hf_dataset(dataset_id: str, split: Optional[str] = None):
     from datasets import load_dataset
@@ -84,6 +137,11 @@ def download_dataset(
     ds_slug = sanitize_filename(dataset_id.split("/")[-1])
     out_dir = output_root / ds_slug
     svgs_dir = out_dir / "svgs"
+    # Skip entirely if artifacts already exist
+    min_needed = limit if (limit is not None) else None
+    if dataset_ready(output_root, ds_slug, split, save_jsonl_flag, save_svg, min_needed):
+        print(f"[SKIP] {dataset_id} already present under {out_dir} (split={split or 'all'}).")
+        return True
     ensure_dir(out_dir)
     if save_svg:
         ensure_dir(svgs_dir)

@@ -13,6 +13,13 @@ workspace.xml
 datasets/
 MMCoIR/
 useless/
+# 忽略这些目录下的所有内容
+MMCoIR-test/*
+MMCoIR-train/*
+
+# 但不忽略 README.md
+!MMCoIR-test/README.md
+!MMCoIR-train/README.md
 # Compiled source #
 ###################
 *.com

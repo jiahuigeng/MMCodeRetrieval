@@ -2,7 +2,7 @@
 """
 Upload MMCoIR-train and MMCoIR-test splits to Hugging Face dataset repos.
 - Upload JSONL and images.tar.gz per dataset subfolder.
-- Also upload dataset_script.py and README.md (always overwrites to ensure latest version).
+- Always upload local README.md from split root (MMCoIR-*/README.md).
 - Skip uploading any subfolder that already exists remotely.
 
 Usage examples:
@@ -146,109 +146,45 @@ def verify_remote(repo_id: str, expected_paths: List[str]) -> bool:
     return True
 
 
-def generate_readme(split_type: str, subsets: List[str]) -> str:
-    """Generate README.md content for the dataset."""
-    subset_list = "\n".join([f"  - name: {s}" for s in subsets])
-    
-    readme = f"""---
-dataset_info:
-  config_name: all
-  splits:
-{subset_list}
-license: cc-by-4.0
----
+def upload_local_readme(api: HfApi, repo_id: str, split_root: Path, commit_prefix: str, dry_run: bool):
+    """Upload local README.md from split_root to the dataset repo root.
+    Fails if README.md does not exist locally.
+    """
+    readme_path = split_root / "README.md"
+    if not readme_path.is_file():
+        print(f"[ERROR] 本地 README.md 不存在: {readme_path}")
+        sys.exit(1)
 
-# MMCoIR-{split_type}
-
-This dataset contains multiple subsets for multimodal code-to-image retrieval.
-
-## Subsets
-
-{", ".join(subsets)}
-
-## Usage
-
-```python
-from datasets import load_dataset
-
-# Load specific subset
-dataset = load_dataset("JiahuiGengNLP/MMCoIR-{split_type}", split="Chart2Code")
-
-# Load all subsets
-dataset = load_dataset("JiahuiGengNLP/MMCoIR-{split_type}")
-```
-
-## Structure
-
-Each subset contains:
-- `{split_type}.jsonl`: JSONL file with metadata
-- `images.tar.gz`: Compressed images directory
-
-## Fields
-
-- `id`: Unique identifier
-- `image`: Image path or URL
-- `text`: Associated text/code/description
-"""
-    return readme
-
-
-def upload_dataset_script(api: HfApi, repo_id: str, split_root: Path, commit_prefix: str, dry_run: bool):
-    """Upload dataset_script.py - always overwrites to ensure latest version."""
-    script_path = split_root / "dataset_script.py"
-    if not script_path.is_file():
-        print(f"[SKIP] 本地无 dataset_script.py: {script_path}")
-        return
-
-    print(f"[UPLOAD] 上传最新 dataset_script.py -> {repo_id}:dataset_script.py")
+    print(f"[UPLOAD] 上传本地 README.md -> {repo_id}:README.md ({readme_path})")
 
     if dry_run:
-        print("[DRY-RUN] 跳过实际上传 dataset_script.py")
-        return
-
-    try:
-        api.upload_file(
-            path_or_fileobj=str(script_path),
-            repo_id=repo_id,
-            repo_type="dataset",
-            path_in_repo="dataset_script.py",
-            commit_message=f"{commit_prefix} Update dataset_script.py",
-        )
-        print("[OK] 已上传最新 dataset_script.py")
-    except Exception as e:
-        print(f"[WARN] 上传 dataset_script.py 失败: {e}")
-
-
-def upload_readme(api: HfApi, repo_id: str, split_type: str, subsets: List[str], commit_prefix: str, dry_run: bool):
-    """Upload README.md - always overwrites to ensure latest version."""
-    readme_content = generate_readme(split_type, subsets)
-    
-    print(f"[UPLOAD] 上传最新 README.md -> {repo_id}:README.md")
-
-    if dry_run:
+        try:
+            with open(readme_path, "r", encoding="utf-8") as f:
+                preview = f.read(500)
+            print("[DRY-RUN] README.md 内容预览:")
+            print(preview + ("..." if len(preview) == 500 else ""))
+        except Exception as e:
+            print(f"[DRY-RUN] 读取 README.md 失败: {e}")
         print("[DRY-RUN] 跳过实际上传 README.md")
-        print("[DRY-RUN] README.md 内容预览:")
-        print(readme_content[:500] + "...")
         return
 
     try:
-        # Upload README using upload_file with content
-        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False, suffix='.md') as f:
-            f.write(readme_content)
-            temp_path = f.name
-        
         api.upload_file(
-            path_or_fileobj=temp_path,
+            path_or_fileobj=str(readme_path),
             repo_id=repo_id,
             repo_type="dataset",
             path_in_repo="README.md",
             commit_message=f"{commit_prefix} Update README.md",
         )
-        
-        os.unlink(temp_path)
-        print("[OK] 已上传最新 README.md")
+        print("[OK] 已上传本地 README.md")
     except Exception as e:
         print(f"[WARN] 上传 README.md 失败: {e}")
+
+
+# dataset_script.py 上传逻辑已移除
+
+
+# 生成 README 的逻辑已移除，改为上传本地 README.md
 
 
 # --------------------------
@@ -263,14 +199,10 @@ def process_split(api: HfApi, split_root: Path, repo_id: str, split: str, datase
     print(f"[INFO] 处理 {split_root} -> {repo_id}, 数据集数: {len(ds_dirs)}")
     ensure_repo(repo_id, create_repo_flag)
 
-    # 收集所有子集名称
-    subset_names = [d.name for d in ds_dirs]
+    # 始终上传本地 README.md
+    upload_local_readme(api, repo_id, split_root, commit_prefix, dry_run)
     
-    # 始终上传最新的 README.md
-    upload_readme(api, repo_id, split, subset_names, commit_prefix, dry_run)
-    
-    # 始终上传最新的 dataset_script.py (不检查是否存在，直接覆盖)
-    upload_dataset_script(api, repo_id, split_root, commit_prefix, dry_run)
+    # 不再上传 dataset_script.py
 
     try:
         remote_files = list_repo_files(repo_id, repo_type="dataset")

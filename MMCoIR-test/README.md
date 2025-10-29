@@ -8,6 +8,14 @@ configs:
   data_files:
   - split: test
     path: Chart2Code/test.jsonl
+- config_name: MMSVG-Icon
+  data_files:
+  - split: test
+    path: MMSVG-Icon/test.jsonl
+- config_name: MMSVG-Illustration
+  data_files:
+  - split: test
+    path: MMSVG-Illustration/test.jsonl
 ---
 
 # MMCoIR-test Dataset
