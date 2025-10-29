@@ -245,8 +245,7 @@ def extract_qa(conv: List[Dict[str, Any]]) -> Optional[Tuple[str, str]]:
 
 def process_web2code(
     input_dir: Path,
-    train_file: Path,
-    test_file: Path,
+    data_file: Path,
     train_root: Path,
     test_root: Path,
     train_count: int,
@@ -262,71 +261,43 @@ def process_web2code(
     if not input_dir.exists():
         print("[ERROR] 输入目录不存在，请先运行 download_web2code.py 下载本地快照。")
         return
-    # 训练源：仅读取 train_file（默认 Web2Code.json）
-    print(f"[SRC] Train file: {train_file} {'(exists)' if train_file.exists() else '(missing)'}")
-    train_iter: Iterable[Dict[str, Any]] = []
-    if train_file.suffix.lower() == ".jsonl":
-        train_iter = read_jsonl(train_file)
+    # 单一数据源：仅读取 data_file（默认 Web2Code.json）
+    print(f"[SRC] Data file: {data_file} {'(exists)' if data_file.exists() else '(missing)'}")
+    data_iter: Iterable[Dict[str, Any]] = []
+    if data_file.suffix.lower() == ".jsonl":
+        data_iter = read_jsonl(data_file)
     else:
-        train_iter = read_json(train_file)
-    usable_train: List[Tuple[str, str, str, Path]] = []  # (id, q, a, img_src)
-    miss_train_img = 0
-    miss_train_qa = 0
-    for obj in train_iter:
+        data_iter = read_json(data_file)
+    usable_all: List[Tuple[str, str, str, Path]] = []  # (id, q, a, img_src)
+    miss_img = 0
+    miss_qa = 0
+    for obj in data_iter:
         img_rel = obj.get("image")
         conv = obj.get("conversations")
         qa = extract_qa(conv)
         if qa is None:
-            miss_train_qa += 1
+            miss_qa += 1
             continue
         q, a = qa
         img_src = resolve_image_path(input_dir, str(img_rel)) if isinstance(img_rel, str) else None
         if img_src is None:
-            miss_train_img += 1
-            continue
-        rec_id = obj.get("id") or Path(str(img_rel)).stem
-        usable_train.append((str(rec_id), q, a, img_src))
-    print(f"[INFO] 训练可用记录: {len(usable_train)} (缺失QA: {miss_train_qa}, 缺失图片: {miss_train_img})")
-    if not usable_train:
-        print("[WARN] 训练集没有可用样本；已退出。")
-        return
-
-    # 测试源：仅读取 test_file（默认 Web2Code_eval.jsonl）
-    print(f"[SRC] Test  file: {test_file} {'(exists)' if test_file.exists() else '(missing)'}")
-    test_iter: Iterable[Dict[str, Any]] = []
-    if test_file.suffix.lower() == ".jsonl":
-        test_iter = read_jsonl(test_file)
-    else:
-        test_iter = read_json(test_file)
-    usable_test: List[Tuple[str, str, str, Path]] = []
-    miss_test_img = 0
-    miss_test_qa = 0
-    for obj in test_iter:
-        qa = extract_test_qa(obj)
-        if qa is None:
-            miss_test_qa += 1
-            continue
-        q, a = qa
-        img_rel = obj.get("image") or obj.get("image_path") or obj.get("img")
-        img_src = resolve_image_path(input_dir, str(img_rel)) if isinstance(img_rel, str) else None
-        if img_src is None:
-            miss_test_img += 1
+            miss_img += 1
             continue
         rec_id = obj.get("id") or obj.get("question_id") or Path(str(img_rel)).stem
-        usable_test.append((str(rec_id), q, a, img_src))
-    print(f"[INFO] 测试可用记录: {len(usable_test)} (缺失QA: {miss_test_qa}, 缺失图片: {miss_test_img})")
-    if not usable_test:
-        print("[WARN] 测试集没有可用样本；已退出。")
+        usable_all.append((str(rec_id), q, a, img_src))
+    print(f"[INFO] 可用记录: {len(usable_all)} (缺失QA: {miss_qa}, 缺失图片: {miss_img})")
+    if not usable_all:
+        print("[WARN] 没有可用样本；已退出。")
         return
 
     # 采样（确定性）
     rnd = random.Random(seed)
-    rnd.shuffle(usable_train)
-    rnd.shuffle(usable_test)
-    train_n = min(train_count, len(usable_train))
-    test_n = min(test_count, len(usable_test))
-    train_sel = usable_train[:train_n]
-    test_sel = usable_test[:test_n]
+    rnd.shuffle(usable_all)
+    train_n = min(train_count, len(usable_all))
+    remain = max(0, len(usable_all) - train_n)
+    test_n = min(test_count, remain)
+    train_sel = usable_all[:train_n]
+    test_sel = usable_all[train_n:train_n + test_n]
     print(f"[PLAN] Train: {len(train_sel)} | Test: {len(test_sel)} (requested: {train_count}/{test_count})")
 
     # 目标路径
@@ -380,13 +351,12 @@ def process_web2code(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="将 MBZUAI/Web2Code 转为检索训练/测试 JSONL 并复制图片")
+    parser = argparse.ArgumentParser(description="将 MBZUAI/Web2Code 转为检索训练/测试 JSONL 并复制图片（仅基于 Web2Code.json）")
     parser.add_argument("--input-dir", type=str, default=str(DEFAULT_INPUT_DIR), help="Web2Code 本地数据快照目录（通过 download_web2code.py 下载）")
-    parser.add_argument("--train-file", type=str, default=DEFAULT_TRAIN_FILE, help="训练源文件（默认 Web2Code.json）")
-    parser.add_argument("--test-file", type=str, default=DEFAULT_TEST_FILE, help="测试源文件（默认 Web2Code_eval.jsonl）")
+    parser.add_argument("--data-file", type=str, default=DEFAULT_TRAIN_FILE, help="单一数据源文件（默认 Web2Code.json）")
     parser.add_argument("--train-root", type=str, default=str(DEFAULT_TRAIN_ROOT), help="输出训练根目录（默认 MMCoIR-train）")
     parser.add_argument("--test-root", type=str, default=str(DEFAULT_TEST_ROOT), help="输出测试根目录（默认 MMCoIR-test）")
-    parser.add_argument("--train-count", type=int, default=100_000, help="训练采样数（默认 100000）")
+    parser.add_argument("--train-count", type=int, default=1_000_000, help="训练采样数（默认 1000000）")
     parser.add_argument("--test-count", type=int, default=2_000, help="测试采样数（默认 2000）")
     parser.add_argument("--seed", type=int, default=42, help="采样随机种子（默认 42）")
     parser.add_argument("--scan-limit", type=int, default=None, help="最多扫描的原始样本数（默认全部）")
@@ -394,21 +364,17 @@ def main():
     args = parser.parse_args()
 
     input_dir = Path(args.input_dir)
-    train_file = Path(args.train_file if args.train_file else DEFAULT_TRAIN_FILE)
-    test_file = Path(args.test_file if args.test_file else DEFAULT_TEST_FILE)
+    data_file = Path(args.data_file if args.data_file else DEFAULT_TRAIN_FILE)
     train_root = Path(args.train_root)
     test_root = Path(args.test_root)
 
     # 若用户仅提供相对文件名，则从 input_dir 解析为绝对路径
-    if not train_file.is_absolute():
-        train_file = input_dir / train_file
-    if not test_file.is_absolute():
-        test_file = input_dir / test_file
+    if not data_file.is_absolute():
+        data_file = input_dir / data_file
 
     process_web2code(
         input_dir=input_dir,
-        train_file=train_file,
-        test_file=test_file,
+        data_file=data_file,
         train_root=train_root,
         test_root=test_root,
         train_count=args.train_count,
