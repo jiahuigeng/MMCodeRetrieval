@@ -159,16 +159,33 @@ def extract_test_qa(obj: Dict[str, Any]) -> Optional[Tuple[str, str]]:
         qa = extract_qa(conv)
         if qa:
             return qa
-    # 2) question/answer
-    q = obj.get("question")
-    a = obj.get("answer")
+    # 2) question/answer（大小写兼容，支持 Q/A）
+    lower_map = {str(k).lower(): v for k, v in obj.items() if isinstance(v, str)}
+    q = None
+    a = None
+    for qk in ("question", "q"):
+        if qk in lower_map:
+            q = lower_map[qk]
+            break
+    for ak in ("answer", "a"):
+        if ak in lower_map:
+            a = lower_map[ak]
+            break
     if isinstance(q, str) and isinstance(a, str):
         return q, a
-    # 3) instruction/output
-    q = obj.get("instruction")
-    a = obj.get("output")
-    if isinstance(q, str) and isinstance(a, str):
-        return q, a
+    # 3) instruction/output（大小写兼容）
+    iq = None
+    oa = None
+    for ik in ("instruction",):
+        if ik in lower_map:
+            iq = lower_map[ik]
+            break
+    for ok in ("output",):
+        if ok in lower_map:
+            oa = lower_map[ok]
+            break
+    if isinstance(iq, str) and isinstance(oa, str):
+        return iq, oa
     # 4) messages
     msgs = obj.get("messages")
     if isinstance(msgs, list) and len(msgs) >= 2:
@@ -183,11 +200,19 @@ def extract_test_qa(obj: Dict[str, Any]) -> Optional[Tuple[str, str]]:
                 a1 = val
         if isinstance(q1, str) and isinstance(a1, str):
             return q1, a1
-    # 5) prompt/completion
-    q = obj.get("prompt")
-    a = obj.get("completion")
-    if isinstance(q, str) and isinstance(a, str):
-        return q, a
+    # 5) prompt/completion（大小写兼容）
+    pq = None
+    ca = None
+    for pk in ("prompt",):
+        if pk in lower_map:
+            pq = lower_map[pk]
+            break
+    for ck in ("completion",):
+        if ck in lower_map:
+            ca = lower_map[ck]
+            break
+    if isinstance(pq, str) and isinstance(ca, str):
+        return pq, ca
     return None
 
 
@@ -287,7 +312,7 @@ def process_web2code(
         if img_src is None:
             miss_test_img += 1
             continue
-        rec_id = obj.get("id") or Path(str(img_rel)).stem
+        rec_id = obj.get("id") or obj.get("question_id") or Path(str(img_rel)).stem
         usable_test.append((str(rec_id), q, a, img_src))
     print(f"[INFO] 测试可用记录: {len(usable_test)} (缺失QA: {miss_test_qa}, 缺失图片: {miss_test_img})")
     if not usable_test:
