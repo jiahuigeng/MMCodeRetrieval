@@ -89,6 +89,7 @@ def resolve_image_path(root_dir: Path, img_rel: str) -> Optional[Path]:
     candidates = [
         root_dir / img_rel,
         root_dir / "Web2Code_image" / img_rel,
+        root_dir / "Web2Code_image_eval" / img_rel,
         root_dir / "images" / img_rel,
         root_dir / "Web2Code_eval_image" / img_rel,
         root_dir / "Web2Code_images" / img_rel,
@@ -372,6 +373,12 @@ def main():
     test_file = Path(args.test_file if args.test_file else DEFAULT_TEST_FILE)
     train_root = Path(args.train_root)
     test_root = Path(args.test_root)
+
+    # 若用户仅提供相对文件名，则从 input_dir 解析为绝对路径
+    if not train_file.is_absolute():
+        train_file = input_dir / train_file
+    if not test_file.is_absolute():
+        test_file = input_dir / test_file
 
     process_web2code(
         input_dir=input_dir,

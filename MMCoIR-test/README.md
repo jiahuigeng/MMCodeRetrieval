@@ -16,6 +16,10 @@ configs:
   data_files:
   - split: test
     path: MMSVG-Illustration/test.jsonl
+- config_name: ChartMimic
+  data_files:
+  - split: test
+    path: ChartMimic/test.jsonl
 ---
 
 # MMCoIR-test Dataset
