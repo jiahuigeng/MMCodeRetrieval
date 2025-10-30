@@ -16,6 +16,10 @@ configs:
   data_files:
   - split: test
     path: MMSVG-Illustration/test.jsonl
+- config_name: Web2Code
+  data_files:
+  - split: test
+    path: Web2Code/test.jsonl
 - config_name: ChartMimic
   data_files:
   - split: test
