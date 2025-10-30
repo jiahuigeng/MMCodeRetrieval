@@ -20,6 +20,22 @@ configs:
   data_files:
   - split: test
     path: ChartMimic/test.jsonl
+- config_name: DiagramGenBenchmark_c2i
+  data_files:
+  - split: test
+    path: DiagramGenBenchmark_c2i/test.jsonl
+- config_name: DiagramGenBenchmark_i2c
+  data_files:
+  - split: test
+    path: DiagramGenBenchmark_i2c/test.jsonl
+- config_name: DiagramGenBenchmark_t2c
+  data_files:
+  - split: test
+    path: DiagramGenBenchmark_t2c/test.jsonl
+- config_name: DiagramGenBenchmark_ti2c
+  data_files:
+  - split: test
+    path: DiagramGenBenchmark_ti2c/test.jsonl
 ---
 
 # MMCoIR-test Dataset

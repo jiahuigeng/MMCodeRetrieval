@@ -231,8 +231,12 @@ def process_split(api: HfApi, split_root: Path, repo_id: str, split: str, datase
         else:
             print(f"[DRY-RUN] 打包跳过: {images_dir} -> {tar_path}")
 
-        # 校验本地文件
-        targets = [key, images_tar_name]
+        # 校验本地文件：若未生成 images.tar.gz（例如 images 目录不存在），仅上传 JSONL
+        targets = [key]
+        if tar_path.exists():
+            targets.append(images_tar_name)
+        else:
+            print(f"[INFO] 未找到 {images_tar_name}，仅上传 JSONL: {key}")
         mapping = verify_local_files(d, targets)
 
         # 上传（强制覆盖时不跳过已存在文件）
