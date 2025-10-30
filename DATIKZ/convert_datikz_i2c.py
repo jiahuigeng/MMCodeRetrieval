@@ -11,13 +11,13 @@
 - 训练集随机采样 100,000 条（可配），测试集随机采样 2,000 条（可配），支持 `--seed` 重现。
 
 输出：
-- 写入 `MMCoIR-train/DATIKZ_i2c/train.jsonl` 与 `MMCoIR-test/DATIKZ_i2c/test.jsonl`。
+- 写入 `MMCoIR-train/DATIKZ_i2c/train.jsonl` 与 `MMCoIR-test/DATIKZ_i2c/test.jsonl`（可通过 `--out-name` 自定义）。
 - 图片分别复制到：
-  - `MMCoIR-train/images/DATIKZ_i2c/images/`
-  - `MMCoIR-test/images/DATIKZ_i2c/images/`
+  - `MMCoIR-train/images/DATIKZ/images/`
+  - `MMCoIR-test/images/DATIKZ/images/`
 - JSONL 字段（4 个 key，与规范一致）：
   - `qry_text`: 固定文本，包含 image token：`<|image_1|>\nPlease convert this image to code.`
-  - `qry_img_path`: 相对图片路径（`images/DATIKZ_i2c/images/<filename>`）
+  - `qry_img_path`: 相对图片路径（`images/DATIKZ/images/<filename>`）
   - `tgt_text`: 目标代码列表（单元素）
   - `tgt_img_path`: 目标图片路径列表（本任务无 -> [""]）
 
@@ -53,7 +53,6 @@ import hashlib
 import io
 
 
-REL_IMG_PREFIX = "images/DATIKZ_i2c/images"
 DEFAULT_IMAGE_TOKEN = "<|image_1|>"
 
 
@@ -160,8 +159,8 @@ def image_basename_from_value(image_value: Any, fallback_name: str) -> str:
     return fallback_name
 
 
-def make_rel_img_path(basename: str) -> str:
-    return f"{REL_IMG_PREFIX}/{basename}"
+def make_rel_img_path(rel_prefix: str, basename: str) -> str:
+    return f"{rel_prefix}/{basename}"
 
 
 def to_item(image_token: str, rel_img: str, code_str: str) -> Dict[str, Any]:
@@ -248,6 +247,8 @@ def main():
     parser.add_argument("--train-subdir", type=str, default="train", help="训练子目录名（默认 train）")
     parser.add_argument("--test-subdir", type=str, default="test", help="测试子目录名（默认 test）")
     parser.add_argument("--image-token", type=str, default=DEFAULT_IMAGE_TOKEN, help="查询文本中的图片 token（默认 <|image_1|>）")
+    parser.add_argument("--out-name", type=str, default="DATIKZ_i2c", help="JSONL 输出数据集文件夹名（默认 DATIKZ_i2c）")
+    parser.add_argument("--images-name", type=str, default="DATIKZ", help="图片目录与 qry_img_path 的数据集名（默认 DATIKZ）")
     parser.add_argument("--image-col", type=str, default="image", help="图片列名（默认 image）")
     parser.add_argument("--code-col", type=str, default="code", help="代码列名（默认 code）")
     parser.add_argument("--train-limit", type=int, default=100000, help="训练采样大小（默认 100000）")
@@ -281,16 +282,17 @@ def main():
     print(f"[INFO] 训练采样: {len(train_rows)} / 目标 {args.train_limit}；测试采样: {len(test_rows)} / 目标 {args.test_limit}")
 
     # 输出目录
-    out_train_dir = Path("MMCoIR-train") / "DATIKZ_i2c"
-    out_test_dir = Path("MMCoIR-test") / "DATIKZ_i2c"
+    out_train_dir = Path("MMCoIR-train") / args.out_name
+    out_test_dir = Path("MMCoIR-test") / args.out_name
     ensure_dir(out_train_dir)
     ensure_dir(out_test_dir)
     out_train_jsonl = out_train_dir / "train.jsonl"
     out_test_jsonl = out_test_dir / "test.jsonl"
 
     # 复制目录目标
-    dest_train_images_dir = Path("MMCoIR-train") / REL_IMG_PREFIX
-    dest_test_images_dir = Path("MMCoIR-test") / REL_IMG_PREFIX
+    rel_img_prefix = f"images/{args.images_name}/images"
+    dest_train_images_dir = Path("MMCoIR-train") / rel_img_prefix
+    dest_test_images_dir = Path("MMCoIR-test") / rel_img_prefix
     copy_images = not args.no_copy_images
     if copy_images:
         ensure_dir(dest_train_images_dir)
@@ -309,7 +311,7 @@ def main():
         if not img_val or not code_str:
             continue
         base = image_basename_from_value(img_val, f"datikz_train_{i:07d}.png")
-        rel_img = make_rel_img_path(base)
+        rel_img = make_rel_img_path(rel_img_prefix, base)
         train_items.append(to_item(args.image_token, rel_img, str(code_str)))
         if copy_images:
             src_path, img_bytes = extract_image_payload(dataset_root, src_images_dir_default, img_val)
@@ -346,7 +348,7 @@ def main():
         if not img_val or not code_str:
             continue
         base = image_basename_from_value(img_val, f"datikz_test_{i:07d}.png")
-        rel_img = make_rel_img_path(base)
+        rel_img = make_rel_img_path(rel_img_prefix, base)
         test_items.append(to_item(args.image_token, rel_img, str(code_str)))
         if copy_images:
             src_path, img_bytes = extract_image_payload(dataset_root, src_images_dir_default, img_val)
@@ -404,7 +406,7 @@ def main():
         print(f"  失败: {v_copy_error}")
         print(f"测试目标目录: {dest_test_images_dir}")
     else:
-        print("[INFO] 未启用复制；请确保图片分别位于 MMCoIR-train/images/DATIKZ_i2c/images 与 MMCoIR-test/images/DATIKZ_i2c/images 下")
+        print("[INFO] 未启用复制；请确保图片分别位于 MMCoIR-train/images/DATIKZ/images 与 MMCoIR-test/images/DATIKZ/images 下，或按 --images-name 自定义")
 
     # 打印一个示例
     if train_items:
