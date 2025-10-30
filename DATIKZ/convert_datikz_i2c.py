@@ -47,8 +47,10 @@ import argparse
 import random
 import shutil
 from pathlib import Path
-from typing import Dict, Any, List, Iterable, Tuple
+from typing import Dict, Any, List, Iterable, Tuple, Optional
 import re
+import hashlib
+import io
 
 
 REL_IMG_PREFIX = "images/DATIKZ_i2c/images"
@@ -104,7 +106,8 @@ def iter_parquet_rows(files: List[Path], image_col: str, code_col: str) -> Itera
             code = row[code_col]
             if img is None or code is None:
                 continue
-            yield {"image": str(img), "code": str(code)}
+            # 保留原始图像值（可能是 str 路径、dict 包含 bytes/path、PIL.Image、或字节），供后续灵活处理
+            yield {"image": img, "code": str(code)}
 
 
 def reservoir_sample(iterable: Iterable[Dict[str, Any]], k: int, seed: int) -> List[Dict[str, Any]]:
@@ -120,8 +123,41 @@ def reservoir_sample(iterable: Iterable[Dict[str, Any]], k: int, seed: int) -> L
     return sample
 
 
-def image_basename(img_path: str) -> str:
-    return os.path.basename(img_path)
+def image_basename_from_value(image_value: Any, fallback_name: str) -> str:
+    """从不同类型的 image 值生成稳定的文件名。
+
+    - str: 视为路径，使用 basename
+    - dict: 若含 'path' 使用其 basename；若含 'bytes' 使用 sha1 生成名
+    - bytes: 使用 sha1 生成名
+    - PIL.Image: 使用 fallback_name
+    - 其他: 使用 fallback_name
+    """
+    try:
+        # str 路径
+        if isinstance(image_value, str):
+            return os.path.basename(image_value)
+        # dict 结构（HF Image 常见）
+        if isinstance(image_value, dict):
+            if 'path' in image_value and image_value['path']:
+                return os.path.basename(str(image_value['path']))
+            if 'bytes' in image_value and image_value['bytes']:
+                b = image_value['bytes']
+                h = hashlib.sha1(b).hexdigest()[:16]
+                return f"img_{h}.png"
+        # 原始字节
+        if isinstance(image_value, (bytes, bytearray)):
+            h = hashlib.sha1(bytes(image_value)).hexdigest()[:16]
+            return f"img_{h}.png"
+        # PIL.Image
+        try:
+            from PIL.Image import Image as PILImage
+            if isinstance(image_value, PILImage):
+                return fallback_name
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return fallback_name
 
 
 def make_rel_img_path(basename: str) -> str:
@@ -138,25 +174,71 @@ def to_item(image_token: str, rel_img: str, code_str: str) -> Dict[str, Any]:
     }
 
 
-def resolve_src_image(dataset_root: Path, src_images_dir: Path, image_value: str) -> Path:
-    """尽可能解析图片的真实路径：优先尝试 dataset_root 下的相对路径，其次回退到 src_images_dir/basename。"""
-    iv = image_value.strip()
-    p = Path(iv)
-    # 若是绝对路径
-    if p.is_absolute() and p.exists():
-        return p
-    # 若是相对路径，尝试拼接 dataset_root
-    cand = dataset_root / iv
-    if cand.exists():
-        return cand
-    # 尝试 data 子目录前缀
-    cand2 = dataset_root / "data" / iv
-    if cand2.exists():
-        return cand2
-    # 回退到 src_images_dir / basename
-    base = os.path.basename(iv)
-    cand3 = src_images_dir / base
-    return cand3
+def extract_image_payload(dataset_root: Path, src_images_dir: Path, image_value: Any) -> Tuple[Optional[Path], Optional[bytes]]:
+    """提取图像来源：返回 (src_path, img_bytes)。
+
+    - 若有可用路径（绝对或相对存在），返回 src_path
+    - 若包含字节内容（dict['bytes'] 或 bytes），返回 img_bytes
+    - 若为 PIL.Image，转存为 PNG 字节返回 img_bytes
+    """
+    # str 路径情况
+    if isinstance(image_value, str):
+        iv = image_value.strip()
+        p = Path(iv)
+        if p.is_absolute() and p.exists():
+            return p, None
+        cand = dataset_root / iv
+        if cand.exists():
+            return cand, None
+        cand2 = dataset_root / "data" / iv
+        if cand2.exists():
+            return cand2, None
+        base = os.path.basename(iv)
+        cand3 = src_images_dir / base
+        if cand3.exists():
+            return cand3, None
+        # 找不到路径，视为无路径
+        return None, None
+
+    # dict（HF Image Feature 常见）
+    if isinstance(image_value, dict):
+        # 优先 path
+        if 'path' in image_value and image_value['path']:
+            try:
+                p = Path(str(image_value['path']))
+                if p.is_absolute() and p.exists():
+                    return p, None
+                cand = dataset_root / p
+                if cand.exists():
+                    return cand, None
+            except Exception:
+                pass
+        # 其次 bytes
+        if 'bytes' in image_value and image_value['bytes']:
+            try:
+                b = image_value['bytes']
+                if isinstance(b, (bytes, bytearray)):
+                    return None, bytes(b)
+            except Exception:
+                pass
+        return None, None
+
+    # 原始字节
+    if isinstance(image_value, (bytes, bytearray)):
+        return None, bytes(image_value)
+
+    # PIL.Image
+    try:
+        from PIL import Image as PILImageModule
+        from PIL.Image import Image as PILImage
+        if isinstance(image_value, PILImage):
+            buf = io.BytesIO()
+            image_value.save(buf, format='PNG')
+            return None, buf.getvalue()
+    except Exception:
+        pass
+
+    return None, None
 
 
 def main():
@@ -220,58 +302,74 @@ def main():
     # 写训练集
     train_items: List[Dict[str, Any]] = []
     t_copy_ok, t_copy_skip, t_copy_missing, t_copy_error = 0, 0, 0, 0
+    t_write_ok, t_write_skip = 0, 0
     for i, r in enumerate(train_rows, 1):
         img_val = r.get("image")
         code_str = r.get("code")
         if not img_val or not code_str:
             continue
-        base = image_basename(img_val)
+        base = image_basename_from_value(img_val, f"datikz_train_{i:07d}.png")
         rel_img = make_rel_img_path(base)
         train_items.append(to_item(args.image_token, rel_img, str(code_str)))
         if copy_images:
-            src_img = resolve_src_image(dataset_root, src_images_dir_default, img_val)
+            src_path, img_bytes = extract_image_payload(dataset_root, src_images_dir_default, img_val)
             dest_img = dest_train_images_dir / base
             try:
-                if not src_img.exists():
-                    t_copy_missing += 1
-                else:
+                if src_path and src_path.exists():
                     if dest_img.exists() and not args.overwrite_images:
                         t_copy_skip += 1
                     else:
-                        shutil.copy2(src_img, dest_img)
+                        shutil.copy2(src_path, dest_img)
                         t_copy_ok += 1
+                elif img_bytes:
+                    if dest_img.exists() and not args.overwrite_images:
+                        t_write_skip += 1
+                    else:
+                        with open(dest_img, 'wb') as f:
+                            f.write(img_bytes)
+                        t_write_ok += 1
+                else:
+                    t_copy_missing += 1
             except Exception as e:
                 t_copy_error += 1
-                print(f"[ERROR] 训练复制失败 {src_img} -> {dest_img}: {e}")
+                print(f"[ERROR] 训练写入/复制失败 -> {dest_img}: {e}")
         if i % 20000 == 0:
             print(f"  [train proc] {i}/{len(train_rows)}")
 
     # 写测试集
     test_items: List[Dict[str, Any]] = []
     v_copy_ok, v_copy_skip, v_copy_missing, v_copy_error = 0, 0, 0, 0
+    v_write_ok, v_write_skip = 0, 0
     for i, r in enumerate(test_rows, 1):
         img_val = r.get("image")
         code_str = r.get("code")
         if not img_val or not code_str:
             continue
-        base = image_basename(img_val)
+        base = image_basename_from_value(img_val, f"datikz_test_{i:07d}.png")
         rel_img = make_rel_img_path(base)
         test_items.append(to_item(args.image_token, rel_img, str(code_str)))
         if copy_images:
-            src_img = resolve_src_image(dataset_root, src_images_dir_default, img_val)
+            src_path, img_bytes = extract_image_payload(dataset_root, src_images_dir_default, img_val)
             dest_img = dest_test_images_dir / base
             try:
-                if not src_img.exists():
-                    v_copy_missing += 1
-                else:
+                if src_path and src_path.exists():
                     if dest_img.exists() and not args.overwrite_images:
                         v_copy_skip += 1
                     else:
-                        shutil.copy2(src_img, dest_img)
+                        shutil.copy2(src_path, dest_img)
                         v_copy_ok += 1
+                elif img_bytes:
+                    if dest_img.exists() and not args.overwrite_images:
+                        v_write_skip += 1
+                    else:
+                        with open(dest_img, 'wb') as f:
+                            f.write(img_bytes)
+                        v_write_ok += 1
+                else:
+                    v_copy_missing += 1
             except Exception as e:
                 v_copy_error += 1
-                print(f"[ERROR] 测试复制失败 {src_img} -> {dest_img}: {e}")
+                print(f"[ERROR] 测试写入/复制失败 -> {dest_img}: {e}")
         if i % 2000 == 0:
             print(f"  [test proc] {i}/{len(test_rows)}")
 
@@ -289,15 +387,19 @@ def main():
     print(f"Train JSONL: {out_train_jsonl}")
     print(f"Test  JSONL: {out_test_jsonl}")
     if copy_images:
-        print("[COPY] 训练图片复制统计:")
+        print("[COPY] 训练图片复制/写入统计:")
         print(f"  成功复制: {t_copy_ok}")
-        print(f"  已存在跳过: {t_copy_skip}")
+        print(f"  成功写入: {t_write_ok}")
+        print(f"  已存在跳过(复制): {t_copy_skip}")
+        print(f"  已存在跳过(写入): {t_write_skip}")
         print(f"  源缺失: {t_copy_missing}")
         print(f"  失败: {t_copy_error}")
         print(f"训练目标目录: {dest_train_images_dir}")
-        print("[COPY] 测试图片复制统计:")
+        print("[COPY] 测试图片复制/写入统计:")
         print(f"  成功复制: {v_copy_ok}")
-        print(f"  已存在跳过: {v_copy_skip}")
+        print(f"  成功写入: {v_write_ok}")
+        print(f"  已存在跳过(复制): {v_copy_skip}")
+        print(f"  已存在跳过(写入): {v_write_skip}")
         print(f"  源缺失: {v_copy_missing}")
         print(f"  失败: {v_copy_error}")
         print(f"测试目标目录: {dest_test_images_dir}")
