@@ -16,6 +16,14 @@ configs:
   data_files:
   - split: train
     path: MMSVG-Illustration/train.jsonl
+- config_name: DATIKZ_c2i
+  data_files:
+  - split: train
+    path: DATIKZ_c2i/train.jsonl
+- config_name: DATIKZ_i2c
+  data_files:
+  - split: train
+    path: DATIKZ_i2c/train.jsonl
 ---
 
 # MMCoIR-train Dataset
