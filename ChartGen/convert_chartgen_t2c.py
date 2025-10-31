@@ -25,7 +25,7 @@ from typing import List, Tuple
 
 import pandas as pd
 
-REPO_ROOT = Path(__file__).parent
+REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_INPUT_ROOT = REPO_ROOT / "datasets" / "ChartGen-200K" / "data"
 TRAIN_ROOT_DEFAULT = REPO_ROOT / "MMCoIR-train" / "ChartGen_t2c"
 TEST_ROOT_DEFAULT = REPO_ROOT / "MMCoIR-test" / "ChartGen_t2c"

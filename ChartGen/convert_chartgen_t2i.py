@@ -24,7 +24,7 @@ from typing import List, Tuple
 
 import pandas as pd
 
-REPO_ROOT = Path(__file__).parent
+REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_INPUT_ROOT = REPO_ROOT / "datasets" / "ChartGen-200K" / "data"
 TRAIN_ROOT_DEFAULT = REPO_ROOT / "MMCoIR-train" / "ChartGen_t2i"
 TEST_ROOT_DEFAULT = REPO_ROOT / "MMCoIR-test" / "ChartGen_t2i"
@@ -100,6 +100,8 @@ def main():
     parser.add_argument("--train-count", type=int, default=100_000, help="Number of train samples")
     parser.add_argument("--test-count", type=int, default=2_000, help="Number of test samples")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--train-ids", type=str, default=None, help="Optional file with train image basenames (one per line) to use as exact IDs")
+    parser.add_argument("--test-ids", type=str, default=None, help="Optional file with test image basenames (one per line) to use as exact IDs")
     parser.add_argument("--overwrite-images", action="store_true", help="Overwrite destination images if exist")
     args = parser.parse_args()
 
@@ -152,12 +154,35 @@ def main():
 
     print(f"[INFO] Candidates: train={len(train_candidates)} test={len(test_candidates)}")
 
-    # Random sample
-    random.seed(args.seed)
-    train_n = min(args.train_count, len(train_candidates))
-    test_n = min(args.test_count, len(test_candidates))
-    train_sample = random.sample(train_candidates, train_n)
-    test_sample = random.sample(test_candidates, test_n)
+    def read_id_list(p: Path):
+        try:
+            with p.open("r", encoding="utf-8") as f:
+                return [line.strip() for line in f if line.strip()]
+        except Exception:
+            return []
+
+    # Build maps for fast lookup
+    train_map = {b: s for (b, s) in train_candidates}
+    test_map = {b: s for (b, s) in test_candidates}
+
+    # Choose samples
+    if args.train_ids:
+        ids = read_id_list(Path(args.train_ids))
+        train_sample = [(b, train_map[b]) for b in ids if b in train_map]
+        train_n = len(train_sample)
+    else:
+        random.seed(args.seed)
+        train_n = min(args.train_count, len(train_candidates))
+        train_sample = random.sample(train_candidates, train_n)
+
+    if args.test_ids:
+        ids = read_id_list(Path(args.test_ids))
+        test_sample = [(b, test_map[b]) for b in ids if b in test_map]
+        test_n = len(test_sample)
+    else:
+        random.seed(args.seed)
+        test_n = min(args.test_count, len(test_candidates))
+        test_sample = random.sample(test_candidates, test_n)
 
     # Convert to JSON items
     train_items = [to_train_item(summary=s, basename=b) for (b, s) in train_sample]
