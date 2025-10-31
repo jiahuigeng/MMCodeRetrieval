@@ -8,8 +8,10 @@ Sample HuggingFaceM4/WebSight (subset v0.1, split=train) into local datasets/Web
   - datasets/WebSight/test
 
 Notes
-- Uses `datasets.load_dataset('HuggingFaceM4/WebSight', 'v0.1', split='train')`.
-- Shuffles with a fixed seed before splitting to avoid ordering bias.
+- Default: materialize via `load_dataset` and shuffle/select (may read many shards).
+- Optional streaming mode: only iterate needed samples without shuffling to avoid
+  downloading/reading the full split. This minimizes data transfer, but selection
+  is sequential (not random). Use a fixed `seed` only in non-streaming mode.
 - Adjusts counts automatically if source split is smaller.
 - Does not copy images; image features remain in the saved dataset.
 
@@ -20,14 +22,20 @@ Advanced
   python WebSight/prepare_websight_subset.py \
     --subset v0.1 --split train --train-count 100000 --test-count 2000 \
     --output-dir datasets/WebSight --seed 42
+
+Streaming (avoid full download, sequential sampling)
+  python WebSight/prepare_websight_subset.py \
+    --subset v0.1 --split train --train-count 100000 --test-count 2000 \
+    --output-dir datasets/WebSight --streaming
 """
 
 import argparse
 import os
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, List, Dict, Any
 
 from datasets import load_dataset, Dataset
+from datasets.iterable_dataset import IterableDataset
 
 
 def parse_args() -> argparse.Namespace:
@@ -40,6 +48,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=str, default="datasets/WebSight", help="Target output directory")
     parser.add_argument("--repo-id", type=str, default="HuggingFaceM4/WebSight", help="HF dataset repo id")
     parser.add_argument("--token", type=str, default=None, help="HF access token; fallback to env (HUGGINGFACE_TOKEN/HF_TOKEN)")
+    parser.add_argument("--streaming", action="store_true", help="Enable streaming mode to avoid full split download (sequential sampling, no shuffle)")
     return parser.parse_args()
 
 
@@ -64,24 +73,57 @@ def main() -> None:
     print(f"Counts:    train={args.train_count}, test={args.test_count}")
     print(f"Output:    {out_dir}")
     print(f"Auth:      {'provided' if token else 'none'}")
+    print(f"Streaming: {args.streaming}")
 
     # Load source split
-    ds: Dataset = load_dataset(
-        args.repo_id,
-        args.subset,
-        split=args.split,
-        token=token,
-    )
-    print(f"Loaded source split: size={len(ds)}")
+    if args.streaming:
+        ds_stream: IterableDataset = load_dataset(
+            args.repo_id,
+            args.subset,
+            split=args.split,
+            token=token,
+            streaming=True,
+        )
+        # Sequentially take train_count, then test_count
+        train_cnt, test_cnt = args.train_count, args.test_count
+        train_buffer: List[Dict[str, Any]] = []
+        test_buffer: List[Dict[str, Any]] = []
 
-    # Shuffle then split
-    ds_shuffled = ds.shuffle(seed=args.seed)
-    train_cnt, test_cnt = adjust_counts(len(ds_shuffled), args.train_count, args.test_count)
-    print(f"Adjusted counts: train={train_cnt}, test={test_cnt}")
+        print("Streaming and taking sequential samples without shuffle ...")
+        for idx, ex in enumerate(ds_stream):
+            if idx < train_cnt:
+                train_buffer.append(ex)
+            elif idx < train_cnt + test_cnt:
+                test_buffer.append(ex)
+            else:
+                break
 
-    train_ds = ds_shuffled.select(range(train_cnt))
-    test_start = train_cnt
-    test_ds = ds_shuffled.select(range(test_start, test_start + test_cnt)) if test_cnt > 0 else None
+        print(f"Streamed: train_buffer={len(train_buffer)}, test_buffer={len(test_buffer)}")
+        if len(train_buffer) < train_cnt:
+            print(f"[WARN] Source smaller than requested train_count; using {len(train_buffer)}")
+        if len(test_buffer) < test_cnt:
+            print(f"[WARN] Source smaller than requested test_count; using {len(test_buffer)}")
+
+        # Materialize to Arrow Datasets
+        train_ds = Dataset.from_list(train_buffer)
+        test_ds = Dataset.from_list(test_buffer) if len(test_buffer) > 0 else None
+    else:
+        ds: Dataset = load_dataset(
+            args.repo_id,
+            args.subset,
+            split=args.split,
+            token=token,
+        )
+        print(f"Loaded source split: size={len(ds)}")
+
+        # Shuffle then split (non-streaming only)
+        ds_shuffled = ds.shuffle(seed=args.seed)
+        train_cnt, test_cnt = adjust_counts(len(ds_shuffled), args.train_count, args.test_count)
+        print(f"Adjusted counts: train={train_cnt}, test={test_cnt}")
+
+        train_ds = ds_shuffled.select(range(train_cnt))
+        test_start = train_cnt
+        test_ds = ds_shuffled.select(range(test_start, test_start + test_cnt)) if test_cnt > 0 else None
 
     # Save to disk (Arrow dataset)
     train_out = out_dir / "train"
