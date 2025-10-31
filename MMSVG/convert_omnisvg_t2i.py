@@ -32,7 +32,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-REPO_ROOT = Path(__file__).parent
+REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DATA_ROOT = REPO_ROOT / "datasets"
 DEFAULT_IMG_ROOT = REPO_ROOT / "MMCoIR"
 DEFAULT_TRAIN_ROOT = REPO_ROOT / "MMCoIR-train"
