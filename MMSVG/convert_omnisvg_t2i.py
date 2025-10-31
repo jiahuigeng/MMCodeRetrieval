@@ -34,7 +34,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DATA_ROOT = REPO_ROOT / "datasets"
-DEFAULT_IMG_ROOT = REPO_ROOT / "MMCoIR"
+DEFAULT_IMG_ROOT = REPO_ROOT / "datasets"
 DEFAULT_TRAIN_ROOT = REPO_ROOT / "MMCoIR-train"
 DEFAULT_TEST_ROOT = REPO_ROOT / "MMCoIR-test"
 DEFAULT_DATASETS = ["MMSVG-Icon", "MMSVG-Illustration"]

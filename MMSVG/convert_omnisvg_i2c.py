@@ -28,7 +28,7 @@ from typing import List, Dict, Any, Optional, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DATA_ROOT = REPO_ROOT / "datasets"
-DEFAULT_IMG_ROOT = REPO_ROOT / "MMCoIR"
+DEFAULT_IMG_ROOT = REPO_ROOT / "datasets"
 DEFAULT_TRAIN_ROOT = REPO_ROOT / "MMCoIR-train"
 DEFAULT_TEST_ROOT = REPO_ROOT / "MMCoIR-test"
 DEFAULT_DATASETS = ["MMSVG-Icon", "MMSVG-Illustration"]
@@ -160,22 +160,20 @@ def process_dataset(
         return
 
     src_imgs = img_root / dataset / IMG_SRC_SUBDIR
-    src_svgs = img_root / dataset / SVG_SRC_SUBDIR
-    if not src_imgs.exists() or not src_svgs.exists():
-        print(f"[WARN] Source dirs missing (imgs/svgs): imgs={src_imgs.exists()} svgs={src_svgs.exists()} -> {src_imgs} | {src_svgs}")
+    if not src_imgs.exists():
+        print(f"[WARN] Source image dir missing: {src_imgs}")
         return
 
     pairs: List[Tuple[str, str]] = []
     for sid, svg_code in pairs_all:
         png_path = src_imgs / f"{sid}.png"
-        svg_path = src_svgs / f"{sid}.svg"
-        if png_path.exists() and svg_path.exists():
+        if png_path.exists():
             pairs.append((sid, svg_code))
 
     total = len(pairs)
-    print(f"[INFO] Available records with id+svg and both files exist: {total}")
+    print(f"[INFO] Available records with PNG images: {total}")
     if total == 0:
-        print("[WARN] No records with both PNG & SVG; skipping.")
+        print("[WARN] No PNG images found; skipping.")
         return
 
     # Deterministic shuffle

@@ -33,7 +33,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DATA_ROOT = REPO_ROOT / "datasets"
-DEFAULT_IMG_ROOT = REPO_ROOT / "MMCoIR"
+DEFAULT_IMG_ROOT = REPO_ROOT / "datasets"
 DEFAULT_TRAIN_ROOT = REPO_ROOT / "MMCoIR-train"
 DEFAULT_TEST_ROOT = REPO_ROOT / "MMCoIR-test"
 DEFAULT_DATASETS = ["MMSVG-Icon", "MMSVG-Illustration"]
@@ -150,24 +150,22 @@ def process_dataset(
         print("[WARN] No usable records; skipping.")
         return
 
-    # 需要同时存在 PNG 与 SVG 文件
+    # 需要存在 PNG 图片
     src_imgs = img_root / dataset / IMG_SRC_SUBDIR
-    src_svgs = img_root / dataset / SVG_SRC_SUBDIR
-    if not src_imgs.exists() or not src_svgs.exists():
-        print(f"[WARN] Source dirs missing (imgs/svgs): imgs={src_imgs.exists()} svgs={src_svgs.exists()} -> {src_imgs} | {src_svgs}")
+    if not src_imgs.exists():
+        print(f"[WARN] Source image dir missing: {src_imgs}")
         return
 
     pairs: List[Tuple[str, str]] = []
     for sid, svg_code in pairs_all:
         png_path = src_imgs / f"{sid}.png"
-        svg_path = src_svgs / f"{sid}.svg"
-        if png_path.exists() and svg_path.exists():
+        if png_path.exists():
             pairs.append((sid, svg_code))
 
     total = len(pairs)
-    print(f"[INFO] Available records with id+svg and both files exist: {total}")
+    print(f"[INFO] Available records with PNG images: {total}")
     if total == 0:
-        print("[WARN] No records with both PNG & SVG; skipping.")
+        print("[WARN] No PNG images found; skipping.")
         return
 
     # Deterministic shuffle & split
@@ -255,7 +253,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description="Convert MMSVG datasets to c2i train/test JSONL and copy images")
     parser.add_argument("--data-root", type=str, default=str(DEFAULT_DATA_ROOT), help="Input datasets root (JSONL under <dataset>/train.jsonl)")
-    parser.add_argument("--img-root", type=str, default=str(DEFAULT_IMG_ROOT), help="Source image root containing <dataset>/imgs and svgs")
+    parser.add_argument("--img-root", type=str, default=str(DEFAULT_IMG_ROOT), help="Source image root containing <dataset>/imgs")
     parser.add_argument("--train-root", type=str, default=str(DEFAULT_TRAIN_ROOT), help="Output root for train (<root>/<dataset>_c2i/train.jsonl & images/<dataset>/images)")
     parser.add_argument("--test-root", type=str, default=str(DEFAULT_TEST_ROOT), help="Output root for test (<root>/<dataset>_c2i/test.jsonl & images/<dataset>/images)")
     parser.add_argument("--datasets", nargs="+", default=DEFAULT_DATASETS, help="Dataset names to process")
