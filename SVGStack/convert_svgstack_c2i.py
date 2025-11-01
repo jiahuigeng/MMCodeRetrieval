@@ -15,7 +15,7 @@ Then it builds JSONL files for code-to-image retrieval:
 JSONL schema follows project conventions for c2i:
 Train items:
   {
-    "qry": "Please convert this code to image.\n<svg code>",
+    "qry": "Please convert this svg code to image.\n<svg code>",
     "qry_image_path": "",
     "pos_text": "<|image_1|>",
     "pos_image_path": "images/SVGStack/images/<id>.png",
@@ -25,15 +25,15 @@ Train items:
 
 Test items:
   {
-    "qry_text": "Please convert this code to image.\n<svg code>",
+    "qry_text": "Please convert this svg code to image.\n<svg code>",
     "qry_img_path": "",
     "tgt_text": ["<|image_1|>"],
     "tgt_img_path": ["images/SVGStack/images/<id>.png"]
   }
 
-Optionally, you can fetch SVG code from the Hugging Face dataset `starvector/svg-stack`
-to populate the queries by enabling `--fetch-svg`. If `--require-code` is set,
-samples without SVG code are skipped.
+By default this script fetches SVG code from the Hugging Face dataset `starvector/svg-stack`
+to populate the queries, and requires code presence (skipping samples without SVG).
+You can disable fetching or code requirement via CLI flags.
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
 IMG_TOKEN = "<|image_1|>"
-DEFAULT_PROMPT = "Please convert this code to image."
+DEFAULT_PROMPT = "Please convert this svg code to image."
 
 # Default local sources of PNGs (produced by convert_svgstack_svg_to_png.py)
 DEFAULT_LOCAL_TRAIN_PNG_DIR = Path("dataset/SVGStack/imgs/train")
@@ -172,8 +172,8 @@ def main():
     ap.add_argument("--test-limit", type=int, default=None, help="Limit number of test samples.")
     ap.add_argument("--prompt", type=str, default=DEFAULT_PROMPT, help="Instruction prefix for queries.")
     ap.add_argument("--overwrite-images", action="store_true", help="Overwrite copied images if exist.")
-    ap.add_argument("--fetch-svg", action="store_true", help="Fetch SVG code from HF dataset to build queries.")
-    ap.add_argument("--require-code", action="store_true", help="Skip samples if no SVG code available.")
+    ap.add_argument("--fetch-svg", action="store_true", default=True, help="Fetch SVG code from HF dataset to build queries (default: on). Use --fetch-svg to keep enabled; disable via --no-fetch-svg if added.")
+    ap.add_argument("--require-code", action="store_true", default=True, help="Skip samples if no SVG code available (default: on).")
     ap.add_argument("--repo-id", type=str, default="starvector/svg-stack", help="HF dataset repo id.")
     ap.add_argument("--revision", type=str, default=None, help="HF dataset revision/tag.")
     ap.add_argument("--out-name", type=str, default=DEFAULT_OUT_NAME, help="Output subdir name under MMCoIR-train/test.")
