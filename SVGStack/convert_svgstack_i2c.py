@@ -23,6 +23,7 @@ JSONL 字段（与 format_checker.py 一致）：
 - 查询文本以图像 token 开头："<|image_1|>"；随后是指令："Please convert this image to svg code."。
 - JSONL 中的图片路径使用 POSIX 风格相对路径："images/SVGStack/images/<name>.png"。
 - 若无法找到对应的 Svg 文本：默认保留为空字符串（可用 --require-code 开启严格模式以跳过该样本）。
+ - 默认：启用从 HF 数据集拉取 Svg 文本并严格要求代码存在（可用 --no-fetch-svg / --no-require-code 关闭）。
 
 使用示例：
   python SVGStack/convert_svgstack_i2c.py \
@@ -169,8 +170,10 @@ def main() -> None:
     p.add_argument("--prompt", type=str, default=DEFAULT_PROMPT, help="查询指令文本")
     p.add_argument("--overwrite-images", action="store_true", help="若目标图片已存在则覆盖")
     p.add_argument("--quiet", action="store_true", help="静默模式")
-    p.add_argument("--require-code", action="store_true", help="严格要求 Svg 代码存在，不存在则跳过该样本")
-    p.add_argument("--fetch-svg", action="store_true", help="启用：从 HF 流式读取 Svg 以对齐文件名")
+    p.add_argument("--fetch-svg", dest="fetch_svg", action="store_true", default=True, help="默认开启：从 HF 流式读取 Svg 以对齐文件名")
+    p.add_argument("--no-fetch-svg", dest="fetch_svg", action="store_false", help="关闭从 HF 拉取 Svg")
+    p.add_argument("--require-code", dest="require_code", action="store_true", default=True, help="默认开启：严格要求 Svg 代码存在，不存在则跳过该样本")
+    p.add_argument("--no-require-code", dest="require_code", action="store_false", help="不严格要求 Svg 代码（缺失则填空字符串）")
     p.add_argument("--repo-id", type=str, default=HF_REPO_ID, help="HF 数据集 repo id")
     p.add_argument("--revision", type=str, default=HF_REVISION, help="HF 数据集 revision")
 
