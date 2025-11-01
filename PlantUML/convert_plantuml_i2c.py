@@ -59,7 +59,7 @@ def _match_txt(png_path: Path) -> Optional[Path]:
 
 
 def collect_pairs_act(split: str) -> List[PairItem]:
-    base = DATASETS_ROOT / "Small_English_Act_Data_Total" / split.capitalize()
+    base = DATASETS_ROOT / "Extra_Large_English_Act_Data_Total" / split.capitalize()
     items: List[PairItem] = []
 
     if not base.exists():
@@ -97,7 +97,7 @@ def collect_pairs_act(split: str) -> List[PairItem]:
 
 
 def collect_pairs_seq(split: str) -> List[PairItem]:
-    base = DATASETS_ROOT / "Small_English_Seq_Data_Total" / split.capitalize()
+    base = DATASETS_ROOT / "Extra_LargeEnglish_Seq_Data_Total" / split.capitalize()
     items: List[PairItem] = []
 
     if not base.exists():
@@ -217,8 +217,8 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description="Convert PlantUML Act/Seq to i2c train/test JSONL and copy images")
     parser.add_argument("--subset", choices=["act", "seq", "both"], default="both", help="选择处理的数据集")
-    parser.add_argument("--limit-train", type=int, default=0, help="限制每数据集训练样本数量(0表示全部)")
-    parser.add_argument("--limit-test", type=int, default=0, help="限制每数据集测试样本数量(0表示全部)")
+    parser.add_argument("--limit-train", type=int, default=100000, help="限制每数据集训练样本数量(默认100000，0表示全部)")
+    parser.add_argument("--limit-test", type=int, default=2000, help="限制每数据集测试样本数量(默认2000，0表示全部)")
     parser.add_argument("--overwrite-images", action="store_true", help="覆盖已存在的已复制图片")
     parser.add_argument("--quiet", action="store_true", help="减少日志输出")
     args = parser.parse_args()
