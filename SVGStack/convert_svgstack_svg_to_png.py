@@ -43,9 +43,16 @@ def svg_to_png_bytes(svg_text: str, background: Optional[str] = None) -> bytes:
 
 def convert_split(samples: Iterable, out_dir: Path, limit: int, background: Optional[str]) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
-    converted = 0
-    pbar = tqdm(total=limit, desc=f"Writing {out_dir.name}")
-    for ex in itertools.islice(samples, 0, limit):
+    existing_count = sum(1 for _ in out_dir.glob("*.png"))
+    new_needed = max(0, limit - existing_count)
+    if new_needed == 0:
+        print(f"[INFO] {out_dir} already has {existing_count} PNGs; nothing to do.")
+        return existing_count
+    pbar = tqdm(total=new_needed, desc=f"Writing {out_dir.name}")
+    new_saved = 0
+    for ex in samples:
+        if new_saved >= new_needed:
+            break
         try:
             filename = ex.get("Filename")
             svg_text = ex.get("Svg")
@@ -54,21 +61,16 @@ def convert_split(samples: Iterable, out_dir: Path, limit: int, background: Opti
             png_name = f"{Path(filename).stem}.png"
             out_path = out_dir / png_name
             if out_path.exists():
-                # 跳过已存在文件，保证可重复运行
-                converted += 1
-                pbar.update(1)
                 continue
             png_bytes = svg_to_png_bytes(svg_text, background)
             out_path.write_bytes(png_bytes)
-            converted += 1
+            new_saved += 1
             pbar.update(1)
         except Exception:
-            # 忽略单样本错误，继续处理
             continue
-        if converted >= limit:
-            break
     pbar.close()
-    return converted
+    final_total = sum(1 for _ in out_dir.glob("*.png"))
+    return final_total
 
 
 def main() -> None:
@@ -91,23 +93,27 @@ def main() -> None:
         print("[WARN] Dataset has no 'test' split; will sample from 'train' after skipping train_count.")
 
     # 转换 train
-    print(f"[INFO] Converting train -> {train_dir} (limit={args.train_count})")
-    train_done = convert_split(ds_train, train_dir, args.train_count, args.background)
-    print(f"[INFO] Train converted: {train_done}")
+    print(f"[INFO] Converting train -> {train_dir} (target={args.train_count})")
+    train_total = convert_split(ds_train, train_dir, args.train_count, args.background)
+    print(f"[INFO] Train total PNGs: {train_total} (target={args.train_count})")
 
     # 转换 test
     if ds_test is not None:
-        print(f"[INFO] Converting test -> {test_dir} (limit={args.test_count})")
-        test_done = convert_split(ds_test, test_dir, args.test_count, args.background)
+        print(f"[INFO] Converting test -> {test_dir} (target={args.test_count})")
+        test_total = convert_split(ds_test, test_dir, args.test_count, args.background)
     else:
-        print(f"[INFO] Converting pseudo-test from train (skip {args.train_count}) -> {test_dir} (limit={args.test_count})")
+        print(f"[INFO] Converting pseudo-test from train (skip {args.train_count}) -> {test_dir} (target={args.test_count})")
         ds_train_2 = load_dataset(args.repo_id, split="train", streaming=True, revision=args.revision)
-        # 跳过前 train_count，再取 test_count
-        test_iter = itertools.islice(ds_train_2, args.train_count, args.train_count + args.test_count)
-        test_done = convert_split(test_iter, test_dir, args.test_count, args.background)
-    print(f"[INFO] Test converted: {test_done}")
+        # 从第 train_count 条开始迭代到结尾，convert_split 会自己填满 args.test_count
+        test_iter = itertools.islice(ds_train_2, args.train_count, None)
+        test_total = convert_split(test_iter, test_dir, args.test_count, args.background)
+    print(f"[INFO] Test total PNGs: {test_total} (target={args.test_count})")
 
-    print(f"[DONE] PNGs saved under: {out_root.resolve()}\n  - train: {train_done}\n  - test:  {test_done}")
+    print(
+        f"[DONE] PNGs saved under: {out_root.resolve()}\n"
+        f"  - train total: {train_total}\n"
+        f"  - test  total: {test_total}"
+    )
 
 
 if __name__ == "__main__":
