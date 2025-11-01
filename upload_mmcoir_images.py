@@ -16,6 +16,7 @@ Defaults:
 Notes:
 - You must be logged in to Hugging Face (via huggingface-cli login or env HF_TOKEN).
 - This script is inspired by existing split uploaders but focuses on images-only packing/upload.
+- If a local 'images.tar.gz' exists and is readable (valid), the script skips compression and uploads it; if missing or corrupted, it re-packs from the 'images/' directory.
 
 Usage examples:
   python upload_mmcoir_images.py --images-dir MMCoIR-train/images/MMSVG-Icon/
@@ -72,6 +73,23 @@ def normalize_images_dir(images_dir: Path) -> Path:
     if (images_dir / "images").exists() and (images_dir / "images").is_dir():
         return images_dir / "images"
     return images_dir
+
+
+def is_tar_gz_valid(tar_path: Path) -> bool:
+    """Return True if the .tar.gz exists, can be read, and has entries under 'images/'."""
+    if not tar_path.exists() or not tar_path.is_file():
+        return False
+    try:
+        with tarfile.open(tar_path, "r:gz") as tar:
+            members = tar.getmembers()
+            if not members:
+                return False
+            # Ensure the archive contains the expected 'images' root or entries under it
+            has_images_root = any(m.name == "images" and m.isdir() for m in members)
+            has_images_entries = any(m.name.startswith("images/") for m in members)
+            return has_images_root or has_images_entries
+    except (tarfile.ReadError, OSError):
+        return False
 
 
 def pack_images(images_dir: Path, tar_path: Path, force: bool = False) -> None:
@@ -156,7 +174,19 @@ def main():
     local_tar = images_dir if images_dir.name.lower() != "images" else images_dir.parent
     local_tar = local_tar / args.tar_name
 
-    pack_images(images_dir, local_tar, force=args.force)
+    # Decide whether to (re)pack based on existence and validity
+    existing_valid = is_tar_gz_valid(local_tar)
+    if args.force:
+        print(f"--force specified; will re-pack {local_tar}.")
+        pack_images(images_dir, local_tar, force=True)
+    elif existing_valid:
+        print(f"Existing tar is valid; skip compression: {local_tar}")
+    else:
+        if local_tar.exists():
+            print(f"Existing tar invalid or corrupted; re-pack: {local_tar}")
+        else:
+            print(f"No tar found; will pack: {local_tar}")
+        pack_images(images_dir, local_tar, force=True)
 
     api = HfApi()
     ensure_repo(api, repo_id, create_repo=args.create_repo)
