@@ -54,6 +54,7 @@ from datasets import load_from_disk
 IMG_TOKEN = "<|image_1|>"
 DEFAULT_PROMPT = "Please convert this code to image."
 DATASET_NAME = "WebSight"
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _ensure_dir(p: Path) -> None:
@@ -200,6 +201,7 @@ def process_split(
     prompt: str,
     overwrite_images: bool,
     quiet: bool,
+    images_root: Optional[Path] = None,
 ) -> Tuple[List[Dict[str, Any]], int]:
     if ds is None:
         return [], 0
@@ -207,7 +209,10 @@ def process_split(
     total = len(ds)
     n = min(limit or total, total)
 
-    images_dir = out_root / "images" / DATASET_NAME / "images"
+    # Always save images under top-level MMCoIR-train/test images directory
+    # Do not nest under dataset-specific JSONL output root
+    base_root = images_root if images_root is not None else out_root
+    images_dir = base_root / "images" / DATASET_NAME / "images"
     _ensure_dir(images_dir)
 
     jsonl_items: List[Dict[str, Any]] = []
@@ -336,6 +341,7 @@ def main():
         prompt=args.prompt,
         overwrite_images=args.overwrite_images,
         quiet=args.quiet,
+        images_root=REPO_ROOT / "MMCoIR-train",
     )
     write_jsonl(train_items, train_root / args.out_train)
 
@@ -350,6 +356,7 @@ def main():
         prompt=args.prompt,
         overwrite_images=args.overwrite_images,
         quiet=args.quiet,
+        images_root=REPO_ROOT / "MMCoIR-test",
     )
     write_jsonl(test_items, test_root / args.out_test)
 

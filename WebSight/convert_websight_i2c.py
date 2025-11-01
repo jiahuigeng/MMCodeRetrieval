@@ -280,9 +280,9 @@ def main() -> None:
     except Exception as e:
         print(f"[WARN] 加载 test 失败: {e}")
 
-    # 目标图片目录
-    train_images_dir = train_root / "images" / dataset_name / "images"
-    test_images_dir = test_root / "images" / dataset_name / "images"
+    # 目标图片目录：固定使用顶层 MMCoIR-train/test 下的 images 路径
+    train_images_dir = DEFAULT_TRAIN_ROOT / "images" / dataset_name / "images"
+    test_images_dir = DEFAULT_TEST_ROOT / "images" / dataset_name / "images"
     _ensure_dir(train_images_dir)
     _ensure_dir(test_images_dir)
 
