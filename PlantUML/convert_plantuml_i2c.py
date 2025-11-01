@@ -86,8 +86,8 @@ def collect_pairs_act(split: str) -> List[PairItem]:
                 pass
             items.append(PairItem(img_path=png, txt_path=txt, train_subdir=train_subdir))
     else:
-        # 测试集通常直接平铺在 Test/ 下
-        for png in base.glob("*.png"):
+        # 测试集改为递归扫描，兼容存在子目录的情况
+        for png in base.rglob("*.png"):
             txt = _match_txt(png)
             if not txt:
                 continue
@@ -97,7 +97,8 @@ def collect_pairs_act(split: str) -> List[PairItem]:
 
 
 def collect_pairs_seq(split: str) -> List[PairItem]:
-    base = DATASETS_ROOT / "Extra_LargeEnglish_Seq_Data_Total" / split.capitalize()
+    # 统一为带下划线的目录名，保持与 c2i 脚本一致
+    base = DATASETS_ROOT / "Extra_Large_English_Seq_Data_Total" / split.capitalize()
     items: List[PairItem] = []
 
     if not base.exists():
@@ -120,7 +121,8 @@ def collect_pairs_seq(split: str) -> List[PairItem]:
                 pass
             items.append(PairItem(img_path=png, txt_path=txt, train_subdir=train_subdir))
     else:
-        for png in base.glob("*.png"):
+        # 测试集改为递归扫描，兼容存在子目录的情况
+        for png in base.rglob("*.png"):
             txt = _match_txt(png)
             if not txt:
                 continue
