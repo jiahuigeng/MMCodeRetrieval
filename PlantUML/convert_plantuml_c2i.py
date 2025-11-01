@@ -84,12 +84,20 @@ def collect_pairs_act(split: str) -> List[PairItem]:
                 pass
             items.append(PairItem(img_path=png, txt_path=txt, train_subdir=train_subdir))
     else:
-        # 测试集通常直接平铺在 Test/ 下
-        for png in base.glob("*.png"):
+        # 测试集递归扫描，兼容存在子目录的情况；记录顶层子目录（如 Test_1）作为文件名前缀
+        for png in base.rglob("*.png"):
             txt = _match_txt(png)
             if not txt:
                 continue
-            items.append(PairItem(img_path=png, txt_path=txt, train_subdir=None))
+            test_top: Optional[str] = None
+            try:
+                rel = png.relative_to(base)
+                parts = rel.parts
+                if len(parts) >= 2:
+                    test_top = parts[0]
+            except Exception:
+                pass
+            items.append(PairItem(img_path=png, txt_path=txt, train_subdir=test_top))
 
     return items
 
@@ -118,11 +126,20 @@ def collect_pairs_seq(split: str) -> List[PairItem]:
                 pass
             items.append(PairItem(img_path=png, txt_path=txt, train_subdir=train_subdir))
     else:
-        for png in base.glob("*.png"):
+        # 测试集递归扫描，兼容存在子目录的情况；记录顶层子目录（如 Test_1）作为文件名前缀
+        for png in base.rglob("*.png"):
             txt = _match_txt(png)
             if not txt:
                 continue
-            items.append(PairItem(img_path=png, txt_path=txt, train_subdir=None))
+            test_top: Optional[str] = None
+            try:
+                rel = png.relative_to(base)
+                parts = rel.parts
+                if len(parts) >= 2:
+                    test_top = parts[0]
+            except Exception:
+                pass
+            items.append(PairItem(img_path=png, txt_path=txt, train_subdir=test_top))
 
     return items
 
@@ -133,7 +150,8 @@ def ensure_dir(d: Path) -> None:
 
 def make_dest_name(src_png: Path, train_subdir: Optional[str]) -> str:
     base_name = src_png.name  # 保留原始文件名（含扩展名）
-    if train_subdir in {"1", "2"}:
+    # 若存在子目录信息（训练集的 1/2 或测试集的 Test_1/Test_2 等），统一作为前缀以避免重名覆盖
+    if train_subdir:
         return f"{train_subdir}_{base_name}"
     return base_name
 
