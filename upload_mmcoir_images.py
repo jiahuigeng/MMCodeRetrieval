@@ -11,6 +11,7 @@ Defaults:
   if includes 'MMCoIR-test' -> JiahuiGengNLP/MMCoIR-test. Can be overridden with --repo-id.
 - The dataset name is inferred from the path. If given .../images/<Dataset>/images, it uses <Dataset>.
 - The tarball is named 'images.tar.gz' by default and uploaded to '<Dataset>/images.tar.gz' in the repo.
+- You can optionally set a remote prefix (e.g., '--remote-prefix images') so the upload path becomes 'images/<Dataset>/images.tar.gz'.
 
 Notes:
 - You must be logged in to Hugging Face (via huggingface-cli login or env HF_TOKEN).
@@ -21,6 +22,7 @@ Usage examples:
   python upload_mmcoir_images.py --images-dir MMCoIR-test/images/SVGStack/
   python upload_mmcoir_images.py --images-dir MMCoIR-train/images/MMSVG-Icon/images --force
   python upload_mmcoir_images.py --images-dir MMCoIR-train/images/MMSVG-Icon/ --repo-id JiahuiGengNLP/MMCoIR-train --dry-run
+  python upload_mmcoir_images.py --images-dir MMCoIR-train/images/MMSVG-Icon/images --remote-prefix images --check
 
 """
 
@@ -139,6 +141,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Print actions without performing uploads.")
     parser.add_argument("--commit-prefix", default="Upload", help="Commit message prefix.")
     parser.add_argument("--check", action="store_true", help="Check if remote file exists after upload.")
+    parser.add_argument("--remote-prefix", default="", help="Optional path prefix in repo (e.g., 'images' or 'images/').")
 
     args = parser.parse_args()
 
@@ -158,7 +161,9 @@ def main():
     api = HfApi()
     ensure_repo(api, repo_id, create_repo=args.create_repo)
 
-    remote_path = f"{dataset}/{args.tar_name}"
+    # Normalize remote prefix: allow 'images', 'images/', '/images/' etc.
+    rp = args.remote_prefix.strip("/")
+    remote_path = f"{rp + '/' if rp else ''}{dataset}/{args.tar_name}"
     upload_tar(api, repo_id, local_tar, remote_path, dry_run=args.dry_run, commit_prefix=args.commit_prefix)
 
     if args.check:
