@@ -46,7 +46,7 @@ from PIL import Image
 
 
 IMG_TOKEN = "<|image_1|>"
-DEFAULT_PROMPT = "请将该图片转换为代码。"
+DEFAULT_PROMPT = "Please convert this image to code."
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_INPUT_DIR = REPO_ROOT / "datasets" / "WebSight"
@@ -60,7 +60,8 @@ def _ensure_dir(p: Path) -> None:
 
 
 def _posix_rel(dataset_name: str, sample_id: str) -> str:
-    return f"{dataset_name}/images/{sample_id}.png"
+    # 统一以 images/ 开头，便于 format_checker 以默认 img_root 拼接
+    return f"images/{dataset_name}/images/{sample_id}.png"
 
 
 def _extract_image_ref(img_entry: Any) -> Tuple[str, Any]:
