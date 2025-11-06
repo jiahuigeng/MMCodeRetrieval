@@ -23,25 +23,32 @@ echo "Data base dir: $DATA_BASEDIR"
 echo "Dataset YAML: $DATA_CONFIG"
 echo "Output base dir: $OUTPUT_BASEDIR"
 
-# === Model Specs (edit as needed) ===
-# Example: Qwen2-VL-2B-Instruct
-MODEL_NAME=${MODEL_NAME:-Qwen/Qwen2-VL-2B-Instruct}
-MODEL_TYPE=${MODEL_TYPE:-vlm}
+# === Model Specs (edit as needed; format: "MODEL_NAME;MODEL_BACKBONE;BASE_OUTPUT_PATH") ===
+declare -a MODEL_SPECS
+# 示例：与 experiments/public/eval/eval_1gpu.sh 保持一致的写法
+MODEL_SPECS+=( "VLM2Vec/VLM2Vec-V2.0;qwen2_vl;$OUTPUT_BASEDIR/VLM2Vec-V2.0-Qwen2VL-2B" )
 
-# Sanitize model name for folder
-MODEL_SAFE_NAME=$(echo "$MODEL_NAME" | tr '/' '_' )
-RUN_OUTPUT_DIR="$OUTPUT_BASEDIR/$MODEL_SAFE_NAME"
-mkdir -p "$RUN_OUTPUT_DIR"
+for spec in "${MODEL_SPECS[@]}"; do
+  IFS=';' read -r MODEL_NAME MODEL_BACKBONE BASE_OUTPUT_PATH <<< "$spec"
+  echo "================================================="
+  echo "🚀 Processing Model: $MODEL_NAME"
+  echo "  - Backbone: $MODEL_BACKBONE"
+  echo "  - Output Path: $BASE_OUTPUT_PATH"
+  mkdir -p "$BASE_OUTPUT_PATH"
 
-echo "Evaluating model: $MODEL_NAME"
+  cmd="CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES python eval_legacy.py \
+    --model_backbone \"$MODEL_BACKBONE\" \
+    --model_name \"$MODEL_NAME\" \
+    --dataset_config \"$DATA_CONFIG\" \
+    --encode_output_path \"$BASE_OUTPUT_PATH\" \
+    --data_basedir \"$DATA_BASEDIR\" \
+    --per_device_eval_batch_size $BATCH_SIZE \
+    --dataloader_num_workers $NUM_WORKERS"
 
-python eval_legacy.py \
-  --model_name "$MODEL_NAME" \
-  --model_type "$MODEL_TYPE" \
-  --dataset_config "$DATA_CONFIG" \
-  --encode_output_path "$RUN_OUTPUT_DIR" \
-  --data_basedir "$DATA_BASEDIR" \
-  --per_device_eval_batch_size "$BATCH_SIZE" \
-  --dataloader_num_workers "$NUM_WORKERS"
+  echo "  - Executing command..."
+  eval "$cmd"
+  echo "  - Done."
+  echo "-------------------------------------------------"
+done
 
-echo "Done. Outputs saved under: $RUN_OUTPUT_DIR"
+echo "✅ All jobs completed."
