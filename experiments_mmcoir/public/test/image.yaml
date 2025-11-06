@@ -1,180 +1,210 @@
 Chart2Code:
-    dataset_parser: image_i2t
+    dataset_parser: vlm2vec_legacy
     dataset_name: Chart2Code
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: i2t
 ChartEdit_c2i:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: ChartEdit_c2i
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: t2i
 ChartEdit_i2c:
-    dataset_parser: image_i2t
+    dataset_parser: vlm2vec_legacy
     dataset_name: ChartEdit_c2i
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: i2t
 ChartEdit_t2c:
-    dataset_parser: image_t2t
+    dataset_parser: vlm2vec_legacy
     dataset_name: ChartEdit_c2i
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: t2t
 ChartEdit_t2i:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: ChartEdit_t2i
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: t2i
 ChartEdit_ti2c:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: ChartEdit_ti2c
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: ti2t
 ChartGen_i2c:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: ChartGen_i2c
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: i2t
 ChartGen_c2i:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: ChartGen_c2i
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: t2i
 DATIKZ_c2i:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: DATIKZ_c2i
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: t2i
 DATIKZ_i2c:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: DATIKZ_i2c
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: i2t
 DiagramGenBenchmark_i2c:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: DiagramGenBenchmark_i2c
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: i2t
 DiagramGenBenchmark_c2i:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: DiagramGenBenchmark_c2i
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: t2i
 DiagramGenBenchmark_t2c:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: DiagramGenBenchmark_t2c
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: t2t
 DiagramGenBenchmark_ti2c:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: DiagramGenBenchmark_ti2c
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: ti2t
 MMSVG-Icon_c2i:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: MMSVG-Icon_c2i
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: t2i
 MMSVG-Icon_i2c:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: MMSVG-Icon_i2c
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: i2t
 MMSVG-Icon_t2c:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: MMSVG-Icon_t2c
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: t2t
 MMSVG-Icon_t2i:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: MMSVG-Icon_t2i
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: t2i
 MMSVG-Illustration_c2i:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: MMSVG-Illustration_c2i
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: t2i
 MMSVG-Illustration_i2c:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: MMSVG-Illustration_i2c
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: i2t
 MMSVG-Illustration_t2c:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: MMSVG-Illustration_t2c
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: t2t
 MMSVG-Illustration_t2i:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: MMSVG-Illustration_t2i
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: t2i
 PlantUML_Act_c2i:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: PlantUML_Act_c2i
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: t2i
 PlantUML_Act_i2c:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: PlantUML_Act_i2c
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: i2t
 PlantUML_Seq_c2i:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: PlantUML_Seq_c2i
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: t2i
 PlantUML_Seq_i2c:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: PlantUML_Seq_i2c
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: i2t
 SVGStack_c2i:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: SCGStack_c2i
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: t2i
 SVGStack_i2c:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: SCGStack_i2c
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: i2t
 Sketch2Code_i2c:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: Sketch2Code_i2c
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: i2t
 Web2Code:
-    dataset_parser: image_t2i
+    dataset_parser: vlm2vec_legacy
     dataset_name: Web2Code
     dataset_split: test
-    image_root: image-tasks/
+    image_root: ./
     eval_type: local
+    data_type: t2i

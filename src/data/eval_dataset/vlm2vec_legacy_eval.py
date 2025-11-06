@@ -100,6 +100,156 @@ def _prepare_i2t(batch_dict, *args, **kwargs):
             "dataset_infos": dataset_infos}
 
 
+@add_metainfo_hook
+def _prepare_t2t(batch_dict, *args, **kwargs):
+    """
+    Text-to-Text retrieval (both sides are text-only).
+    expects fields: `qry_inst`, `qry_text`, `tgt_text`.
+    - Query: text only (no image)
+    - Candidates: text list (no image)
+    """
+    model_backbone = kwargs['model_backbone']
+
+    query_texts, query_images, cand_texts, cand_images, dataset_infos = [], [], [], [], []
+    for qry_inst, qry_text, tgt_texts in (
+            zip(batch_dict.get('qry_inst', [''] * len(batch_dict['qry_text'])),
+                batch_dict['qry_text'],
+                batch_dict['tgt_text'])):
+
+        qry_inst = qry_inst.replace("<|image_1|>", "").strip()
+        # Do not add image tokens for pure text
+        qry_text = process_input_text(qry_inst, model_backbone, text=qry_text, add_image_token=False)
+        qry_text = qry_text.replace(" \n", "\n") + "\n"
+        query_texts.append([qry_text])
+        query_images.append([None])
+
+        cand_texts.append(tgt_texts)
+        cand_images.append([None] * len(tgt_texts))
+        dataset_infos.append({
+            "cand_names": tgt_texts,
+            "label_name": tgt_texts[0],
+        })
+
+    return {"query_text": query_texts, "query_image": query_images,
+            "cand_text": cand_texts, "cand_image": cand_images,
+            "dataset_infos": dataset_infos}
+
+
+@add_metainfo_hook
+def _prepare_ti2i(batch_dict, *args, **kwargs):
+    """
+    Text+Image to Image retrieval.
+    expects fields: `qry_inst`, `qry_text`, `qry_img_path`, `tgt_inst`, `tgt_text`, `tgt_img_path`.
+    - Query: image + text
+    - Candidates: images with optional captions
+    """
+    image_resolution, model_backbone = kwargs['image_resolution'], kwargs['model_backbone']
+    image_root = kwargs.get('image_root', '')
+
+    query_texts, query_images, cand_texts, cand_images, dataset_infos = [], [], [], [], []
+    for qry_inst, qry_text, qry_img_path, tgt_inst, tgt_captions, tgt_img_paths in (
+            zip(batch_dict.get('qry_inst', [''] * len(batch_dict['qry_text'])),
+                batch_dict['qry_text'],
+                batch_dict['qry_img_path'],
+                batch_dict.get('tgt_inst', [''] * len(batch_dict['tgt_text'])),
+                batch_dict['tgt_text'],
+                batch_dict['tgt_img_path'])):
+
+        # Query: add proper image token and include image
+        qry_inst = qry_inst.replace("<|image_1|>", "").strip()
+        qry_text = process_input_text(qry_inst, model_backbone, text=qry_text, add_image_token=True)
+        qry_text = qry_text.replace(" \n", "\n") + "\n"
+        query_texts.append([qry_text])
+        qry_img_path = os.path.join(image_root, qry_img_path) if image_root else qry_img_path
+        query_images.append([{ "bytes": [None], "paths": [qry_img_path],
+                               "resolutions": [RESOLUTION_MAPPING.get(image_resolution, None)] }])
+
+        # Candidates: images with optional captions
+        if tgt_captions and tgt_captions[0].strip():
+            tgt_inst = tgt_inst.replace("<|image_1|>", "")
+            tgt_inst_captions = []
+            for tgt_cap in tgt_captions:
+                tgt_inst_caption = process_input_text(tgt_inst + ' ' + tgt_cap, model_backbone, text='', add_image_token=True)
+                tgt_inst_caption = tgt_inst_caption.replace(" \n", "\n") + '\n'
+                tgt_inst_captions.append(tgt_inst_caption)
+            cand_texts.append(tgt_inst_captions)
+        else:
+            tgt_inst = tgt_inst.replace("<|image_1|>", "")
+            tgt_inst_caption = process_input_text(tgt_inst, model_backbone, text='', add_image_token=True)
+            tgt_inst_caption = tgt_inst_caption.replace(" \n", "\n") + '\n'
+            cand_texts.append([tgt_inst_caption] * len(tgt_img_paths))
+
+        cand_img_paths = [os.path.join(image_root, p) if image_root else p for p in tgt_img_paths]
+        img_list = [{"bytes": [None], "paths": [path],
+                     "resolutions": [RESOLUTION_MAPPING.get(image_resolution, None)]} for path in cand_img_paths]
+        cand_images.append(img_list)
+        dataset_infos.append({
+            "cand_names": tgt_img_paths,
+            "label_name": tgt_img_paths[0],
+        })
+
+    return {"query_text": query_texts, "query_image": query_images,
+            "cand_text": cand_texts, "cand_image": cand_images,
+            "dataset_infos": dataset_infos}
+
+
+@add_metainfo_hook
+def _prepare_ti2ti(batch_dict, *args, **kwargs):
+    """
+    Text+Image to Text+Image retrieval (both sides multimodal).
+    expects fields: `qry_inst`, `qry_text`, `qry_img_path`, `tgt_inst`, `tgt_text`, `tgt_img_path`.
+    - Query: image + text
+    - Candidates: image + text list
+    """
+    image_resolution, model_backbone = kwargs['image_resolution'], kwargs['model_backbone']
+    image_root = kwargs.get('image_root', '')
+
+    query_texts, query_images, cand_texts, cand_images, dataset_infos = [], [], [], [], []
+    for qry_inst, qry_text, qry_img_path, tgt_inst, tgt_captions, tgt_img_paths in (
+            zip(batch_dict.get('qry_inst', [''] * len(batch_dict['qry_text'])),
+                batch_dict['qry_text'],
+                batch_dict['qry_img_path'],
+                batch_dict.get('tgt_inst', [''] * len(batch_dict['tgt_text'])),
+                batch_dict['tgt_text'],
+                batch_dict['tgt_img_path'])):
+
+        # Query side
+        qry_inst = qry_inst.replace("<|image_1|>", "").strip()
+        qry_text = process_input_text(qry_inst, model_backbone, text=qry_text, add_image_token=True)
+        qry_text = qry_text.replace(" \n", "\n") + "\n"
+        query_texts.append([qry_text])
+        qry_img_path = os.path.join(image_root, qry_img_path) if image_root else qry_img_path
+        query_images.append([{ "bytes": [None], "paths": [qry_img_path],
+                               "resolutions": [RESOLUTION_MAPPING.get(image_resolution, None)] }])
+
+        # Candidate side: image + (optional) text
+        tgt_inst = tgt_inst.replace("<|image_1|>", "")
+        if tgt_captions and tgt_captions[0].strip():
+            tgt_inst_captions = []
+            for tgt_cap in tgt_captions:
+                tgt_inst_caption = process_input_text(tgt_inst + ' ' + tgt_cap, model_backbone, text='', add_image_token=True)
+                tgt_inst_caption = tgt_inst_caption.replace(" \n", "\n") + '\n'
+                tgt_inst_captions.append(tgt_inst_caption)
+            cand_texts.append(tgt_inst_captions)
+        else:
+            tgt_inst_caption = process_input_text(tgt_inst, model_backbone, text='', add_image_token=True)
+            tgt_inst_caption = tgt_inst_caption.replace(" \n", "\n") + '\n'
+            cand_texts.append([tgt_inst_caption] * len(tgt_img_paths))
+
+        cand_img_paths = [os.path.join(image_root, p) if image_root else p for p in tgt_img_paths]
+        img_list = [{"bytes": [None], "paths": [path],
+                     "resolutions": [RESOLUTION_MAPPING.get(image_resolution, None)]} for path in cand_img_paths]
+        cand_images.append(img_list)
+        dataset_infos.append({
+            "cand_names": tgt_img_paths,
+            "label_name": tgt_img_paths[0],
+        })
+
+    return {"query_text": query_texts, "query_image": query_images,
+            "cand_text": cand_texts, "cand_image": cand_images,
+            "dataset_infos": dataset_infos}
+
+
 DATASET_PARSER_NAME = "vlm2vec_legacy"
 DEFAULT_HF_PATH = "ziyjiang/MMEB_Test_Instruct"
 @AutoEvalPairDataset.register(DATASET_PARSER_NAME)
@@ -119,7 +269,20 @@ def load_vlm2vec_legacy_dataset(model_args, data_args, *args, **kwargs):
     # infer data_type if not explicitly provided
     data_type = kwargs.get("data_type", None)
     if data_type is None:
-        if subset_name.endswith("_t2i") or subset_name in ["VisDial", "WebQA", "EDIS", "Wiki-SS-NQ", "VisualNews_t2i", "MSCOCO_t2i"]:
+        # Suffix-based inference first
+        if subset_name.endswith("_t2i"):
+            data_type = "t2i"
+        elif subset_name.endswith("_i2t") or subset_name.endswith("_ti2t"):
+            # treat i2t and ti2t the same (image+text -> text)
+            data_type = "i2t"
+        elif subset_name.endswith("_t2t"):
+            data_type = "t2t"
+        elif subset_name.endswith("_ti2i"):
+            data_type = "ti2i"
+        elif subset_name.endswith("_ti2ti"):
+            data_type = "ti2ti"
+        # Known names fallback for legacy sets
+        elif subset_name in ["VisDial", "WebQA", "EDIS", "Wiki-SS-NQ", "VisualNews_t2i", "MSCOCO_t2i"]:
             data_type = "t2i"
         else:
             data_type = "i2t"
@@ -135,7 +298,15 @@ def load_vlm2vec_legacy_dataset(model_args, data_args, *args, **kwargs):
     kwargs['model_backbone'] = model_args.model_backbone
     kwargs['image_resolution'] = data_args.image_resolution
 
-    prepare_fn = _prepare_t2i if data_type == 't2i' else _prepare_i2t
+    prepare_map = {
+        't2i': _prepare_t2i,
+        'i2t': _prepare_i2t,
+        't2t': _prepare_t2t,
+        'ti2t': _prepare_i2t,   # alias to i2t
+        'ti2i': _prepare_ti2i,
+        'ti2ti': _prepare_ti2ti,
+    }
+    prepare_fn = prepare_map.get(data_type, _prepare_i2t)
     dataset = dataset.map(lambda x: prepare_fn(x, **kwargs), batched=True,
                           batch_size=256, num_proc=4,
                           drop_last_batch=False, load_from_cache_file=False)

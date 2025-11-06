@@ -16,6 +16,7 @@ useless/
 # 忽略这些目录下的所有内容
 MMCoIR-test/*
 MMCoIR-train/*
+old_VLM2Vec/
 
 # 但不忽略 README.md
 !MMCoIR-test/README.md
