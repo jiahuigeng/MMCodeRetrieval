@@ -266,6 +266,7 @@ def load_vlm2vec_legacy_dataset(model_args, data_args, *args, **kwargs):
     """
     subset_name = kwargs["dataset_name"]
     hf_path = kwargs.get("hf_path", DEFAULT_HF_PATH)
+    eval_type = kwargs.get("eval_type", None)
     # infer data_type if not explicitly provided
     data_type = kwargs.get("data_type", None)
     if data_type is None:
@@ -287,7 +288,17 @@ def load_vlm2vec_legacy_dataset(model_args, data_args, *args, **kwargs):
         else:
             data_type = "i2t"
 
-    dataset = load_dataset(hf_path, subset_name, split=kwargs.get("dataset_split", "test"))
+    # Prefer local JSONL loading when explicitly requested via eval_type: local
+    if eval_type == "local":
+        split = kwargs.get("dataset_split", "test")
+        base_dir = data_args.data_basedir or ""
+        jsonl_path = os.path.join(base_dir, subset_name, f"{split}.jsonl")
+        if not os.path.exists(jsonl_path):
+            raise FileNotFoundError(f"Local JSONL not found: {jsonl_path}. Please ensure --data_basedir points to MMCoIR-{split} root and dataset_name='{subset_name}' exists.")
+        # Load local JSONL as HF dataset
+        dataset = load_dataset("json", data_files={split: jsonl_path}, split=split)
+    else:
+        dataset = load_dataset(hf_path, subset_name, split=kwargs.get("dataset_split", "test"))
     num_sample_per_subset = kwargs.get("num_sample_per_subset", getattr(data_args, "num_sample_per_subset", sys.maxsize))
     if num_sample_per_subset is not None and type(num_sample_per_subset) is str and num_sample_per_subset.isdigit():
         num_sample_per_subset = int(num_sample_per_subset)
