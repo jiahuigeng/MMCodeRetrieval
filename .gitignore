@@ -43,6 +43,8 @@ old_VLM2Vec/
 *.tar
 *.zip
 
+data/
+datasets
 # Logs and databases #
 ######################
 *.log
