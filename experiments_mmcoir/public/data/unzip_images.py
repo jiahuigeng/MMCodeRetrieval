@@ -47,11 +47,21 @@ def extract_archive(archive_path: str, target_dir: str, overwrite: bool) -> None
         print(f"跳过：目标已存在且未指定 --overwrite -> {target_dir}")
         return
 
+    # 预创建目标目录，便于需要时将文件解压到其中
     os.makedirs(target_dir, exist_ok=True)
     mode = "r:*"  # 支持 .tar.gz / .tar
     with tarfile.open(archive_path, mode) as tar:
-        print(f"解压 {archive_path} 到 {target_dir}")
-        safe_extract(tar, target_dir)
+        members = tar.getmembers()
+        # 判断归档内部是否以 `images/` 为顶层目录（由打包脚本使用 arcname="images" 产生）
+        has_images_root = any(m.name == "images" and m.isdir() for m in members)
+        all_under_images = all(m.name == "images" or m.name.startswith("images/") for m in members)
+
+        # 当归档内部已包含顶层 `images/` 时，应该将其解压到父目录，使最终路径为 `<root>/images/...`
+        # 如果不是这种结构，则回退到原来逻辑：解压到 `target_dir`。
+        extract_path = os.path.dirname(target_dir) if (has_images_root or all_under_images) else target_dir
+
+        print(f"解压 {archive_path} 到 {extract_path}")
+        safe_extract(tar, extract_path)
     print(f"完成解压: {archive_path}")
 
 
