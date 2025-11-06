@@ -1,0 +1,132 @@
+Chart2Code:
+    dataset_parser: image_i2t
+    dataset_name: Chart2Code
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
+ChartGen_c2i:
+    dataset_parser: image_i2t
+    dataset_name: ChartGen_c2i
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
+ChartGen_i2c:
+    dataset_parser: image_i2t
+    dataset_name: ChartGen_i2c
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
+ChartGen_t2c:
+    dataset_parser: image_i2t
+    dataset_name: ChartGen_t2c
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
+ChartGen_t2i:
+    dataset_parser: image_i2t
+    dataset_name: ChartGen_t2i
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
+DATIKZ_c2i:
+    dataset_parser: image_i2t
+    dataset_name: DATIKZ_c2i
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
+DATIKZ_i2c:
+    dataset_parser: image_i2t
+    dataset_name: DATIKZ_i2c
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
+MMSVG-Icon_c2i:
+    dataset_parser: image_i2t
+    dataset_name: MMSVG-Icon_c2i
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
+MMSVG-Icon_i2c:
+    dataset_parser: image_i2t
+    dataset_name: MMSVG-Icon_i2c
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
+MMSVG-Icon_t2c:
+    dataset_parser: image_i2t
+    dataset_name: MMSVG-Icon_t2c
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
+MMSVG-Icon_t2i:
+    dataset_parser: image_i2t
+    dataset_name: MMSVG-Icon_t2i
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
+MMSVG-Illustration_c2i:
+    dataset_parser: image_i2t
+    dataset_name: MMSVG-Illustration_c2i
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
+MMSVG-Illustration_i2c:
+    dataset_parser: image_i2t
+    dataset_name: MMSVG-Illustration_i2c
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
+MMSVG-Illustration_t2c:
+    dataset_parser: image_i2t
+    dataset_name: MMSVG-Illustration_t2c
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
+MMSVG-Illustration_t2i:
+    dataset_parser: image_i2t
+    dataset_name: MMSVG-Illustration_t2i
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
+PlantUML_Act_c2i:
+    dataset_parser: image_i2t
+    dataset_name: PlantUML_Act_c2i
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
+PlantUML_Act_i2c:
+    dataset_parser: image_i2t
+    dataset_name: PlantUML_Act_i2c
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
+PlantUML_Seq_c2i:
+    dataset_parser: image_i2t
+    dataset_name: PlantUML_Seq_c2i
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
+PlantUML_Seq_i2c:
+    dataset_parser: image_i2t
+    dataset_name: PlantUML_Seq_i2c
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
+SVGStack_c2i:
+    dataset_parser: image_i2t
+    dataset_name: SVGStack_c2i
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
+SVGStack_i2c:
+    dataset_parser: image_i2t
+    dataset_name: SVGStack_i2c
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
+Web2Code:
+    dataset_parser: image_i2t
+    dataset_name: Web2Code
+    dataset_split: train
+    image_root: image-tasks/
+    eval_type: local
