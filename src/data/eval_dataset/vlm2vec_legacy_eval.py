@@ -5,6 +5,69 @@ from datasets import load_dataset
 from src.data.eval_dataset.base_eval_dataset import AutoEvalPairDataset, add_metainfo_hook, RESOLUTION_MAPPING
 from src.model.processor import VLM_IMAGE_TOKENS
 from src.model.processor import process_input_text
+from typing import List
+
+
+def _path_exists(path: str) -> bool:
+    try:
+        return os.path.exists(path)
+    except Exception:
+        return False
+
+
+def _strict_validate_map(batch_dict, *, data_type: str, image_root: str):
+    """
+    Perform lightweight per-example validation based on data_type.
+    - i2t: require qry_img_path exists; require tgt_text list non-empty
+    - t2i: require tgt_img_path exists; qry_text present
+    - t2t: require qry_text and tgt_text
+    - ti2i: require qry_img_path and tgt_img_path exist
+    - ti2ti: require qry_img_path and tgt_img_path exist
+    This function returns the batch unchanged; raises ValueError on violations.
+    """
+    n = len(batch_dict.get('qry_text', []))
+    # Helper to join image_root safely
+    def join_root(p):
+        return os.path.join(image_root, p) if image_root else p
+
+    # Iterate per-row to build precise error messages
+    for idx in range(n):
+        # Common checks
+        if 'qry_text' not in batch_dict:
+            raise ValueError("Missing field 'qry_text' in dataset example.")
+
+        if data_type in ['i2t', 'ti2t', 'ti2i', 'ti2ti']:
+            if 'qry_img_path' not in batch_dict:
+                raise ValueError("Missing field 'qry_img_path' for data_type requiring image on query side.")
+            qpath = batch_dict['qry_img_path'][idx]
+            qfull = join_root(qpath)
+            if not isinstance(qpath, str) or not qpath.strip():
+                raise ValueError(f"Invalid 'qry_img_path' at row {idx}: {qpath}")
+            if not _path_exists(qfull):
+                raise ValueError(f"Image not found for 'qry_img_path' at row {idx}: {qfull}")
+
+        if data_type in ['i2t', 't2t', 'ti2t']:
+            if 'tgt_text' not in batch_dict:
+                raise ValueError("Missing field 'tgt_text' for text candidates.")
+            tgt_texts: List[str] = batch_dict['tgt_text'][idx]
+            if not isinstance(tgt_texts, list) or len(tgt_texts) == 0:
+                raise ValueError(f"Invalid 'tgt_text' at row {idx}: expect non-empty list of strings.")
+
+        if data_type in ['t2i', 'ti2i', 'ti2ti']:
+            if 'tgt_img_path' not in batch_dict:
+                raise ValueError("Missing field 'tgt_img_path' for image candidates.")
+            tgt_paths: List[str] = batch_dict['tgt_img_path'][idx]
+            if not isinstance(tgt_paths, list) or len(tgt_paths) == 0:
+                raise ValueError(f"Invalid 'tgt_img_path' at row {idx}: expect non-empty list of image paths.")
+            for p in tgt_paths:
+                full = join_root(p)
+                if not isinstance(p, str) or not p.strip():
+                    raise ValueError(f"Invalid candidate image path at row {idx}: {p}")
+                if not _path_exists(full):
+                    raise ValueError(f"Candidate image not found at row {idx}: {full}")
+
+    # Return batch unchanged; validation-only
+    return batch_dict
 
 
 @add_metainfo_hook
@@ -267,6 +330,7 @@ def load_vlm2vec_legacy_dataset(model_args, data_args, *args, **kwargs):
     subset_name = kwargs["dataset_name"]
     hf_path = kwargs.get("hf_path", DEFAULT_HF_PATH)
     eval_type = kwargs.get("eval_type", None)
+    strict_validate = kwargs.get("strict_validate", False)
     # infer data_type if not explicitly provided
     data_type = kwargs.get("data_type", None)
     if data_type is None:
@@ -318,6 +382,11 @@ def load_vlm2vec_legacy_dataset(model_args, data_args, *args, **kwargs):
         'ti2ti': _prepare_ti2ti,
     }
     prepare_fn = prepare_map.get(data_type, _prepare_i2t)
+    # Optional strict validation before preparation
+    if strict_validate:
+        dataset = dataset.map(lambda x: _strict_validate_map(x, data_type=data_type, image_root=kwargs.get('image_root', '')),
+                              batched=True, batch_size=1024, num_proc=1,
+                              drop_last_batch=False, load_from_cache_file=False)
     dataset = dataset.map(lambda x: prepare_fn(x, **kwargs), batched=True,
                           batch_size=256, num_proc=4,
                           drop_last_batch=False, load_from_cache_file=False)
