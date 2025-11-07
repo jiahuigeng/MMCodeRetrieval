@@ -112,7 +112,7 @@ def to_test_item(sample: Dict[str, Any], rel_img: str) -> Dict[str, Any]:
     a_text = sample.get("reference_answer") or sample.get("answer") or sample.get("code") or ""
     return {
         "qry_text": normalize_image_token(q_text),
-        "qry_img_path": rel_img,
+        "tgt_img_path": rel_img,
         "tgt_text": [str(a_text)],
         "tgt_img_path": [""]
     }
