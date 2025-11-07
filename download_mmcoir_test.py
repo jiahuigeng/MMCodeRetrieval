@@ -33,9 +33,13 @@ from fnmatch import fnmatch
 from huggingface_hub import HfApi, hf_hub_download
 
 def _filter_files(files: List[str], subset: Optional[str], allow_patterns: Optional[List[str]]) -> List[str]:
-    """Filter files by subset prefix or glob patterns."""
+    """Filter files by subset prefix or glob patterns.
+
+    Note: do NOT include the subset folder itself (e.g., 'DiagramGenBenchmark_i2c') as a file,
+    only keep paths under it (e.g., 'DiagramGenBenchmark_i2c/...').
+    """
     if subset:
-        files = [f for f in files if f.startswith(f"{subset}/") or f == subset]
+        files = [f for f in files if f.startswith(f"{subset}/")]
     if allow_patterns:
         # Keep files that match ANY of the patterns
         allowed = []
@@ -73,10 +77,15 @@ def download_dataset(repo_id: str, target_dir: Path, subset: Optional[str] = Non
     # Download each file
     for file in files:
         print(f"Downloading {file}...")
-        local_path = target_dir / file
-        local_path.parent.mkdir(parents=True, exist_ok=True)  # Create subdirectories if needed
-        hf_hub_download(repo_id=repo_id, filename=file, repo_type="dataset", local_dir=str(local_path.parent))
-        print(f"Saved to {local_path}")
+        # Ensure the subdirectory exists under target_dir
+        subdir = os.path.dirname(file)
+        if subdir:
+            (target_dir / subdir).mkdir(parents=True, exist_ok=True)
+
+        # Always set local_dir to the root target_dir, so hf_hub_download
+        # will place the file at target_dir/<file>, preserving repo subfolders
+        hf_hub_download(repo_id=repo_id, filename=file, repo_type="dataset", local_dir=str(target_dir))
+        print(f"Saved to {target_dir / file}")
 
 def main():
     parser = argparse.ArgumentParser(description="Download dataset from Hugging Face repository.")
