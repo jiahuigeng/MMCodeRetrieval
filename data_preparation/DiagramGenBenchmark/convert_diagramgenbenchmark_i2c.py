@@ -1,33 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-将 DiagramAgent/DiagramGenBenchmark 的 DiagramEditing 子集转换为“文本+图片到代码搜索(ti2c)”测试集。
+将 DiagramAgent/DiagramGenBenchmark 的 DiagramCoding 子集转换为“图片到代码检索(i2c)”测试集。
 
 输出：
-- 生成到 `MMCoIR-test/DiagramGenBenchmark_ti2c/test.jsonl`。
-- 图片复制到 `MMCoIR-test/images/DiagramGenBenchmark/images/`（默认开启，可关闭）；JSONL 中图片路径以 `images/DiagramGenBenchmark/images/<filename>` 记录。
-- JSONL 字段（共 4 个 key）：
-  - `qry_text`: 来自 `query` 字段的文本，前置一个 image token（`<|image_1|>`）。
-  - `qry_img_path`: 相对图片路径（`images/DiagramGenBenchmark/images/<filename>`）。
-  - `tgt_text`: 列表，包含来自 `reference_answer` 的目标代码字符串。
-  - `tgt_img_path`: 列表，始终为 [""]（本任务无目标图片）。
-
-说明：
-- 原数据的 `images` 字段为仅含一个元素的列表，脚本使用其中第一个元素作为查询图片。
-- 复制功能默认开启；关闭复制时，请确保图片已在 `MMCoIR-test/images/DiagramGenBenchmark/images/` 下。
+- 生成到 `MMCoIR-test/DiagramGenBenchmark_i2c/test.jsonl`。
+- 图片复制到 `MMCoIR-test/images/DiagramGenBenchmark/images/`（默认开启，可关闭）；JSONL 中路径以 `images/DiagramGenBenchmark/images/<filename>` 记录。
+- JSONL 字段（四个键，与 c2i 方向相反）：
+  - `qry_text`: 开头直接注入 `<|image_1|>`，其后为固定文案 "Please convert this image to code."。
+  - `qry_img_path`: 指向查询图片的相对路径（`images/DiagramGenBenchmark/images/<filename>`）。
+  - `tgt_text`: 列表，包含代码字符串（可为单元素列表）。
+  - `tgt_img_path`: 列表，长度与 `tgt_text` 相同；本任务为空字符串 ""（例如 [""]).
 
 示例用法：
-  python DiagramGenBenchmark/convert_diagramgenbenchmark_ti2c.py \
-    --input-json datasets/DiagramGenBenchmark/DiagramEditing.json \
-    --out-dir MMCoIR-test/DiagramGenBenchmark_ti2c \
-    --src-images-dir datasets/DiagramGenBenchmark/images
+  python DiagramGenBenchmark/convert_diagramgenbenchmark_i2c.py \
+    --input-json datasets/DiagramGenBenchmark/DiagramCoding.json \
+    --out-dir MMCoIR-test/DiagramGenBenchmark_i2c
 
 可选参数：
 - `--limit N`              仅处理前 N 条样本
 - `--no-copy-images`       不复制图片到目标目录
 - `--src-images-dir PATH`  源图片目录（默认 datasets/DiagramGenBenchmark/images）
 - `--overwrite-images`     覆盖已存在的目标图片
-
 """
 
 import os
@@ -38,12 +32,11 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 
-DATASET_NAME = "DiagramGenBenchmark"
-SUBSET_JSON = "DiagramEditing.json"
-OUT_DATASET_NAME = "DiagramGenBenchmark_ti2c"
-OUT_ROOT = "MMCoIR-test"  # JSONL 输出根目录
-REL_IMG_PREFIX = "images/DiagramGenBenchmark/images"
-IMAGE_TOKEN = "<|image_1|>"
+DATASET_NAME = "DiagramGenBenchmark"                # 原项目名用于图片目录
+OUT_DATASET_NAME = "DiagramGenBenchmark_i2c"         # 输出数据集目录名
+IMG_SUBDIR = "images"
+OUT_ROOT = "MMCoIR-test"                             # JSONL 输出根目录
+DEST_IMG_PREFIX = "images/DiagramGenBenchmark/images"  # 目标图片前缀（与原项目名一致）
 
 
 def ensure_dir(p: Path):
@@ -65,13 +58,6 @@ def read_json(path: Path) -> List[Dict[str, Any]]:
         return []
 
 
-def normalize_image_token(text: str) -> str:
-    if text is None:
-        text = ""
-    t = str(text).replace("<image>", "").strip()
-    return f"{IMAGE_TOKEN}\n{t}" if not t.startswith(IMAGE_TOKEN) else t
-
-
 def extract_first_image(sample: Dict[str, Any]) -> Optional[str]:
     img = sample.get("images")
     if isinstance(img, list) and img:
@@ -91,40 +77,34 @@ def image_basename(img_path: str) -> str:
     return os.path.basename(img_path)
 
 
-def make_rel_img_path(basename: str) -> str:
-    return f"{REL_IMG_PREFIX}/{basename}"
+def make_qry_image_path(basename: str) -> str:
+    return f"{DEST_IMG_PREFIX}/{basename}"
 
 
-def get_query_text(sample: Dict[str, Any]) -> Optional[str]:
-    v = sample.get("query") or sample.get("instruction")
-    if v is None:
-        return None
-    return str(v)
-
-
-def get_reference_code(sample: Dict[str, Any]) -> Optional[str]:
+def get_code_text(sample: Dict[str, Any]) -> Optional[str]:
+    # 代码来源字段：reference_answer / answer / code
     v = sample.get("reference_answer") or sample.get("answer") or sample.get("code")
     if v is None:
         return None
     return str(v)
 
 
-def to_test_item(q_text: str, rel_img: str, code_str: str) -> Dict[str, Any]:
+def to_test_item(qry_img_path: str, code_str: str) -> Dict[str, Any]:
     return {
-        "qry_text": normalize_image_token(q_text),
-        "qry_img_path": rel_img,
+        "qry_text": "<|image_1|>\nPlease convert this image to code.",
+        "qry_img_path": qry_img_path,
         "tgt_text": [code_str],
         "tgt_img_path": [""]
     }
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Convert DiagramGenBenchmark DiagramEditing subset to text+image-to-code (ti2c) test JSONL")
-    parser.add_argument("--input-json", type=str, default=str(Path("datasets")/DATASET_NAME/SUBSET_JSON), help="输入 JSON（DiagramEditing.json）路径")
+    parser = argparse.ArgumentParser(description="Convert DiagramGenBenchmark DiagramCoding subset to image-to-code (i2c) test JSONL")
+    parser.add_argument("--input-json", type=str, default=str(Path("datasets")/DATASET_NAME/"DiagramCoding.json"), help="输入 JSON（DiagramCoding.json）路径")
     parser.add_argument("--out-dir", type=str, default=str(Path(OUT_ROOT)/OUT_DATASET_NAME), help="输出目录（将生成 test.jsonl）")
     parser.add_argument("--limit", type=int, default=None, help="仅转换前 N 条样本")
     parser.add_argument("--no-copy-images", action="store_true", help="不复制源图片到目标目录")
-    parser.add_argument("--src-images-dir", type=str, default=str(Path("datasets")/DATASET_NAME/"images"), help="源图片目录（默认 datasets/DiagramGenBenchmark/images）")
+    parser.add_argument("--src-images-dir", type=str, default=str(Path("datasets")/DATASET_NAME/IMG_SUBDIR), help="源图片目录（默认 datasets/DiagramGenBenchmark/images）")
     parser.add_argument("--overwrite-images", action="store_true", help="覆盖已存在的目标图片")
     args = parser.parse_args()
 
@@ -133,9 +113,10 @@ def main():
     out_jsonl = out_dir / "test.jsonl"
     ensure_dir(out_dir)
 
-    # 复制相关目录（物理保存到 MMCoIR-test/images/...，JSON 写入以 images/... 开头）
+    # 复制相关目录
     src_images_dir = Path(args.src_images_dir)
-    dest_images_dir = Path(OUT_ROOT) / REL_IMG_PREFIX
+    # 实际复制目标在 MMCoIR-test 下，但 JSON 中写入相对路径以 images/ 开头
+    dest_images_dir = Path(OUT_ROOT) / DEST_IMG_PREFIX
     copy_images = not args.no_copy_images
     if copy_images:
         ensure_dir(dest_images_dir)
@@ -159,27 +140,23 @@ def main():
 
     test_items: List[Dict[str, Any]] = []
     copy_ok, copy_skip, copy_missing, copy_error = 0, 0, 0, 0
-    drop_missing_q, drop_missing_img, drop_missing_code = 0, 0, 0
+    drop_missing_code, drop_missing_image = 0, 0
 
     for i, sp in enumerate(samples, 1):
-        q_text = get_query_text(sp)
         img_p = extract_first_image(sp)
-        code_str = get_reference_code(sp)
+        code_str = get_code_text(sp)
 
-        if not q_text:
-            drop_missing_q += 1
-            continue
-        if not img_p:
-            drop_missing_img += 1
-            continue
         if not code_str:
             drop_missing_code += 1
             continue
+        if not img_p:
+            drop_missing_image += 1
+            continue
 
         basename = image_basename(img_p)
-        rel_img = make_rel_img_path(basename)
+        qry_img_path = make_qry_image_path(basename)
 
-        test_items.append(to_test_item(q_text, rel_img, code_str))
+        test_items.append(to_test_item(qry_img_path, code_str))
 
         # 复制图片到 MMCoIR-test/images/DiagramGenBenchmark/images
         if copy_images:
@@ -207,9 +184,9 @@ def main():
         for item in test_items:
             f.write(json.dumps(item, ensure_ascii=False) + "\n")
 
-    print("[DONE] DiagramGenBenchmark DiagramEditing -> TI2C 测试集 完成")
+    print("[DONE] DiagramGenBenchmark DiagramCoding -> I2C 测试集 完成")
     print(f"Test JSONL:  {out_jsonl}")
-    print(f"[INFO] 丢弃样本 - 无 query: {drop_missing_q}, 无 images: {drop_missing_img}, 无 reference_answer/code: {drop_missing_code}")
+    print(f"[INFO] 丢弃样本 - 无代码: {drop_missing_code}, 无图片: {drop_missing_image}")
     if copy_images:
         print("[COPY] 图片复制统计:")
         print(f"  成功复制: {copy_ok}")

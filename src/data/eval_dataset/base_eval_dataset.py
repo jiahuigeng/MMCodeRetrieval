@@ -126,8 +126,22 @@ def generate_cand_dataset(dataset, corpus):
     cand_rows = []
     all_cand_name = set()
     for row in dataset:
-        assert len(row["cand_text"]) == len(row["cand_image"]) == len(row["dataset_infos"]["cand_names"])
-        for cand_text, cand_image, cand_name in zip(row["cand_text"], row["cand_image"], row["dataset_infos"]["cand_names"]):
+        # Prefer provided cand_names; if missing, fall back to deriving from content
+        cand_names = row["dataset_infos"].get("cand_names", None)
+        if cand_names is None:
+            # Derive a stable candidate identifier from available fields
+            # Priority: text content if present; else image path
+            cand_names = []
+            for cand_text, cand_image in zip(row["cand_text"], row["cand_image"]):
+                if cand_text is not None and len(cand_text) > 0:
+                    # Use the text string itself as the key (first element if list-like)
+                    key = cand_text if isinstance(cand_text, str) else cand_text[0]
+                else:
+                    # Image path key
+                    key = cand_image["paths"][0] if isinstance(cand_image, dict) and cand_image.get("paths") else None
+                cand_names.append(key)
+        assert len(row["cand_text"]) == len(row["cand_image"]) == len(cand_names)
+        for cand_text, cand_image, cand_name in zip(row["cand_text"], row["cand_image"], cand_names):
             if cand_name not in all_cand_name:
                 cand_rows.append({
                     "cand_text": [cand_text],
@@ -138,13 +152,23 @@ def generate_cand_dataset(dataset, corpus):
 
     if corpus is not None:
         for row in corpus:
-            assert len(row["cand_text"]) == len(row["cand_image"]) == len(row["dataset_infos"]["cand_names"]) == 1
-            cand_name = row["dataset_infos"]["cand_names"][0]
+            # Allow corpus rows without explicit cand_names
+            cand_names = row["dataset_infos"].get("cand_names", None)
+            if cand_names is None:
+                if row["cand_text"] and isinstance(row["cand_text"][0], str):
+                    cand_name = row["cand_text"][0]
+                elif isinstance(row["cand_image"][0], dict) and row["cand_image"][0].get("paths"):
+                    cand_name = row["cand_image"][0]["paths"][0]
+                else:
+                    raise ValueError("Cannot derive candidate name from corpus row")
+            else:
+                assert len(row["cand_text"]) == len(row["cand_image"]) == len(cand_names) == 1
+                cand_name = cand_names[0]
             if cand_name not in all_cand_name:
                 cand_rows.append({
                     "cand_text": row["cand_text"],
                     "cand_image": row["cand_image"],
-                    "dataset_infos": {"cand_name": row["dataset_infos"]["cand_names"][0]},
+                    "dataset_infos": {"cand_name": cand_name},
                 })
                 all_cand_name.add(cand_name)
 
