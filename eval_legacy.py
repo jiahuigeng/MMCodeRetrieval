@@ -220,6 +220,13 @@ def main():
 
             full_eval_qry_dataset, corpus = AutoEvalPairDataset.instantiate(model_args=model_args, data_args=data_args, **task_config)
             full_eval_cand_dataset = generate_cand_dataset(full_eval_qry_dataset, corpus)
+            # --- Debug Stats: Query vs Candidate counts ---
+            try:
+                print_master(f"[Stats] {dataset_name} | num_query_rows={full_eval_qry_dataset.num_rows} | num_tgt_candidates={full_eval_cand_dataset.num_rows}")
+                if full_eval_cand_dataset.num_rows != full_eval_qry_dataset.num_rows:
+                    print_master("[Notice] candidates != query rows. Possible reasons: (1) each row has multiple tgt entries; (2) dedup across rows/corpus.")
+            except Exception as e:
+                print_master(f"[Stats] Failed to compute dataset counts: {e}")
             eval_qry_dataset, eval_cand_dataset = full_eval_qry_dataset, full_eval_cand_dataset
             # Pad datasets to be divisible by world_size before splitting
             if dist.is_initialized():
@@ -262,6 +269,11 @@ def main():
             if local_rank == 0:
                 cand_embed_dict = {cand_id: embed for cand_id, embed in zip(all_cand_ids, cand_embeds)}
                 with open(cand_embed_path, 'wb') as f: pickle.dump(cand_embed_dict, f)
+                # --- Debug Stats: Encoded candidates ---
+                try:
+                    print_master(f"[Stats] {dataset_name} | encoded_candidates={len(cand_embed_dict)} | encoded_ids={len(all_cand_ids)}")
+                except Exception as e:
+                    print_master(f"[Stats] Failed to print encoded candidate stats: {e}")
                 print_master(f"Saved candidate embeddings to {cand_embed_path}")
 
         if dist.is_initialized():
@@ -288,6 +300,8 @@ def main():
             rank_against_all_candidates = task_config.get("eval_type", "global") == "global"
             if rank_against_all_candidates:
                 cand_keys = list(cand_embed_dict.keys())
+                # --- Debug Stats: Global ranking candidate pool size ---
+                print_master(f"[Stats] {dataset_name} | global_candidate_pool={len(cand_keys)}")
                 cand_embeds = np.stack([cand_embed_dict[key] for key in cand_keys])
                 # Handle late-interaction scoring
                 if qry_embeds.ndim == 3: # Query: [N_q, L_q, H] | Candidate: [N_c, L_c, H]
