@@ -352,13 +352,18 @@ def load_vlm2vec_legacy_dataset(model_args, data_args, *args, **kwargs):
         else:
             data_type = "i2t"
 
-    # Prefer local JSONL loading when explicitly requested via eval_type: local
-    if eval_type == "local":
-        split = kwargs.get("dataset_split", "test")
-        base_dir = data_args.data_basedir or ""
-        jsonl_path = os.path.join(base_dir, subset_name, f"{split}.jsonl")
+    # Prefer local JSONL loading:
+    # 1) explicitly requested via eval_type: local
+    # 2) OR auto-fallback if --data_basedir is set and local JSONL exists
+    split = kwargs.get("dataset_split", "test")
+    base_dir = data_args.data_basedir or ""
+    jsonl_path = os.path.join(base_dir, subset_name, f"{split}.jsonl")
+    use_local = (eval_type == "local") or (base_dir and os.path.exists(jsonl_path))
+    if use_local:
         if not os.path.exists(jsonl_path):
-            raise FileNotFoundError(f"Local JSONL not found: {jsonl_path}. Please ensure --data_basedir points to MMCoIR-{split} root and dataset_name='{subset_name}' exists.")
+            raise FileNotFoundError(
+                f"Local JSONL not found: {jsonl_path}. Please ensure --data_basedir points to MMCoIR-{split} root and dataset_name='{subset_name}' exists."
+            )
         # Load local JSONL as HF dataset
         dataset = load_dataset("json", data_files={split: jsonl_path}, split=split)
     else:
