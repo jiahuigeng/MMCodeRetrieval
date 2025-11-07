@@ -297,12 +297,25 @@ def main():
             gt_infos = [json.loads(l) for l in open(dataset_info_path)]
             pred_dicts = []
 
+            # --- Optional Shuffle/Permutation Controls ---
+            shuffle_order = bool(task_config.get("shuffle_candidate_order", False))
+            permute_embeddings = bool(task_config.get("permute_candidate_embeddings", False))
+            shuffle_seed = task_config.get("shuffle_seed", None)
+            rng = np.random.default_rng(shuffle_seed) if shuffle_seed is not None else np.random.default_rng()
+
             rank_against_all_candidates = task_config.get("eval_type", "global") == "global"
             if rank_against_all_candidates:
                 cand_keys = list(cand_embed_dict.keys())
+                if shuffle_order:
+                    rng.shuffle(cand_keys)
+                    print_master(f"[Shuffle] {dataset_name} | Shuffled global candidate key order (seed={shuffle_seed})")
                 # --- Debug Stats: Global ranking candidate pool size ---
                 print_master(f"[Stats] {dataset_name} | global_candidate_pool={len(cand_keys)}")
                 cand_embeds = np.stack([cand_embed_dict[key] for key in cand_keys])
+                if permute_embeddings:
+                    perm = rng.permutation(len(cand_keys))
+                    cand_embeds = cand_embeds[perm]
+                    print_master(f"[Permute] {dataset_name} | Permuted candidate embedding-to-key alignment (seed={shuffle_seed})")
                 # Handle late-interaction scoring
                 if qry_embeds.ndim == 3: # Query: [N_q, L_q, H] | Candidate: [N_c, L_c, H]
                     qry_embed = torch.from_numpy(qry_embeds)
@@ -323,7 +336,11 @@ def main():
                     })
             else:
                 for qid, (qry_embed, gt_info) in tqdm(enumerate(zip(qry_embeds, gt_infos)), desc=f"Calculating scores for {dataset_name}"):
-                    cand_embeds = np.stack([cand_embed_dict[key] for key in gt_info["cand_names"]])
+                    cand_names = list(gt_info["cand_names"]) if isinstance(gt_info["cand_names"], list) else [gt_info["cand_names"]]
+                    if shuffle_order:
+                        rng.shuffle(cand_names)
+                        print_master(f"[Shuffle] {dataset_name} | Shuffled local candidate order for query {qid} (seed={shuffle_seed})")
+                    cand_embeds = np.stack([cand_embed_dict[key] for key in cand_names])
                     if qry_embeds.ndim == 3: # Query: [N_q, L_q, H] | Candidate: [N_c, L_c, H]
                         qry_embed = torch.from_numpy(np.array(qry_embed)).unsqueeze(0)
                         cand_embeds = [torch.from_numpy(np.array(t)) for t in cand_embeds]
@@ -337,7 +354,7 @@ def main():
 
                     assert rel_scores is None or len(rel_docids) == len(rel_scores)
                     pred_dicts.append({
-                        "prediction": [gt_info["cand_names"][i] for i in ranked_candids],
+                        "prediction": [cand_names[i] for i in ranked_candids],
                         "label": rel_docids,
                         "rel_scores": rel_scores,
                     })
