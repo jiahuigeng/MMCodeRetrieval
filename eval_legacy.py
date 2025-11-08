@@ -22,7 +22,6 @@ from datasets.distributed import split_dataset_by_node
 from src.arguments import ModelArguments, DataArguments, TrainingArguments
 from src.data.collator.eval_collator import MultimodalEvalDataCollator
 from src.data.eval_dataset.base_eval_dataset import AutoEvalPairDataset, generate_cand_dataset
-import src.data.eval_dataset  # ensure dataset parsers are imported and registered
 from src.eval_utils.metrics import RankingMetrics
 from src.model.model import MMEBModel
 from src.model.processor import get_backbone_name, load_processor, COLPALI
@@ -227,6 +226,19 @@ def main():
         if str(task_config.get("dataset_parser", "")).startswith("mmcoir_legacy"):
             task_config.setdefault("eval_type", "global")
             task_config.setdefault("shuffle_candidate_order", True)
+
+        # Optional sample limit (CLI overrides ENV)
+        try:
+            if getattr(data_args, "num_sample_per_subset", None) is not None:
+                task_config["num_sample_per_subset"] = int(data_args.num_sample_per_subset)
+                print_master(f"[Config] {dataset_name} | num_sample_per_subset (CLI) = {task_config['num_sample_per_subset']}")
+            else:
+                limit_str = os.environ.get("NUM_SAMPLE_PER_SUBSET")
+                if limit_str is not None and str(limit_str).isdigit():
+                    task_config["num_sample_per_subset"] = int(limit_str)
+                    print_master(f"[Config] {dataset_name} | num_sample_per_subset (ENV) = {task_config['num_sample_per_subset']}")
+        except Exception as e:
+            print_master(f"[Warn] Could not set num_sample_per_subset: {e}")
 
 
         query_embed_path = os.path.join(data_args.encode_output_path, f"{dataset_name}_qry")

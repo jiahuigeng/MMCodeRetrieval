@@ -45,6 +45,11 @@ for spec in "${MODEL_SPECS[@]}"; do
     --per_device_eval_batch_size $BATCH_SIZE \
     --dataloader_num_workers $NUM_WORKERS"
 
+  # Optional: limit samples via CLI flag
+  if [[ -n "$LIMIT_SAMPLES" ]]; then
+    cmd="$cmd --num_sample_per_subset $LIMIT_SAMPLES"
+  fi
+
   echo "  - Executing command..."
   eval "$cmd"
   echo "  - Done."
