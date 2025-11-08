@@ -72,6 +72,65 @@ def t2i_data_prepare(batch_dict, *args, **kwargs):
             "dataset_infos": dataset_infos}
 
 
+@add_metainfo_hook
+def i2i_data_prepare(batch_dict, *args, **kwargs):
+    image_resolution, model_backbone = kwargs['image_resolution'], kwargs['model_backbone']
+    image_root = kwargs['image_root']
+
+    query_texts, query_images, cand_texts, cand_images, dataset_infos = [], [], [], [], []
+    for qry_img_path, tgt_img_path in (
+            zip(batch_dict['qry_img_path'], batch_dict['tgt_img_path'])):
+        # Query: image-conditioned (add image token, with actual image)
+        q_text = process_input_text("", model_backbone, add_image_token=True)
+        qry_img_val = qry_img_path[0] if isinstance(qry_img_path, (list, tuple)) and len(qry_img_path) > 0 else qry_img_path
+        qry_img_full = os.path.join(image_root, str(qry_img_val))
+        query_texts.append([q_text])
+        query_images.append([ImageVideoInstance(bytes=[None], paths=[qry_img_full],
+                                               resolutions=[RESOLUTION_MAPPING.get(image_resolution, None)]).to_dict()])
+
+        # Candidate: image-conditioned (add image token, with actual image)
+        cand_texts.append([process_input_text("", model_backbone, add_image_token=True)])
+        tgt_img_val = tgt_img_path[0] if isinstance(tgt_img_path, (list, tuple)) and len(tgt_img_path) > 0 else tgt_img_path
+        tgt_path_full = os.path.join(image_root, str(tgt_img_val))
+        cand_images.append([ImageVideoInstance(bytes=[None], paths=[tgt_path_full],
+                                               resolutions=[RESOLUTION_MAPPING.get(image_resolution, None)]).to_dict()])
+        dataset_infos.append({
+            "cand_names": [str(tgt_img_val)],
+            "label_name": str(tgt_img_val),
+        })
+
+    return {"query_text": query_texts, "query_image": query_images,
+            "cand_text": cand_texts, "cand_image": cand_images,
+            "dataset_infos": dataset_infos}
+
+
+@add_metainfo_hook
+def t2t_data_prepare(batch_dict, *args, **kwargs):
+    model_backbone = kwargs['model_backbone']
+
+    query_texts, query_images, cand_texts, cand_images, dataset_infos = [], [], [], [], []
+    for qry_text, tgt_text in (
+            zip(batch_dict['qry_text'], batch_dict['tgt_text'])):
+        # Query: pure text (no image token)
+        q_text = process_input_text("", model_backbone, text=str(qry_text), add_image_token=False)
+        q_text = q_text.replace(" \n", "\n") + "\n"
+        query_texts.append([q_text])
+        query_images.append([None])
+
+        # Candidate: pure text (no image token)
+        tgt_text_val = tgt_text[0] if isinstance(tgt_text, (list, tuple)) and len(tgt_text) > 0 else tgt_text
+        cand_texts.append([str(tgt_text_val)])
+        cand_images.append([None])
+        dataset_infos.append({
+            "cand_names": [str(tgt_text_val)],
+            "label_name": str(tgt_text_val),
+        })
+
+    return {"query_text": query_texts, "query_image": query_images,
+            "cand_text": cand_texts, "cand_image": cand_images,
+            "dataset_infos": dataset_infos}
+
+
 def _load_local_json_dataset(data_path, split):
     # Support file path or directory containing <split>.jsonl
     if os.path.isdir(data_path):
@@ -84,6 +143,8 @@ def _load_local_json_dataset(data_path, split):
 
 DATASET_PARSER_NAME_I2T = "mmcoir_legacy_i2t"
 DATASET_PARSER_NAME_T2I = "mmcoir_legacy_t2i"
+DATASET_PARSER_NAME_I2I = "mmcoir_legacy_i2i"
+DATASET_PARSER_NAME_T2T = "mmcoir_legacy_t2t"
 
 
 @AutoEvalPairDataset.register(DATASET_PARSER_NAME_I2T)
@@ -131,6 +192,57 @@ def load_mmcoir_legacy_t2i(model_args, data_args, *args, **kwargs):
     kwargs['image_resolution'] = data_args.image_resolution
 
     dataset = dataset.map(lambda x: t2i_data_prepare(x, **kwargs), batched=True,
+                          batch_size=256, num_proc=4,
+                          drop_last_batch=False, load_from_cache_file=False)
+    dataset = dataset.select_columns(["query_text", "query_image", "cand_text", "cand_image", "dataset_infos"])
+
+    return dataset, None
+
+
+@AutoEvalPairDataset.register(DATASET_PARSER_NAME_I2I)
+def load_mmcoir_legacy_i2i(model_args, data_args, *args, **kwargs):
+    # Expected kwargs: data_path, dataset_split, image_root, optional num_sample_per_subset
+    data_path = kwargs.get("data_path")
+    dataset_split = kwargs.get("dataset_split", "test")
+    if not data_path:
+        raise ValueError("mmcoir_legacy_i2i requires 'data_path' in task_config (local JSONL path or directory)")
+
+    dataset = _load_local_json_dataset(data_path, dataset_split)
+    num_sample_per_subset = kwargs.get("num_sample_per_subset", sys.maxsize)
+    if num_sample_per_subset is not None and isinstance(num_sample_per_subset, str) and num_sample_per_subset.isdigit():
+        num_sample_per_subset = int(num_sample_per_subset)
+    if isinstance(num_sample_per_subset, int) and num_sample_per_subset < dataset.num_rows:
+        dataset = dataset.select(range(num_sample_per_subset))
+
+    kwargs['model_backbone'] = model_args.model_backbone
+    kwargs['image_resolution'] = data_args.image_resolution
+
+    dataset = dataset.map(lambda x: i2i_data_prepare(x, **kwargs), batched=True,
+                          batch_size=256, num_proc=4,
+                          drop_last_batch=False, load_from_cache_file=False)
+    dataset = dataset.select_columns(["query_text", "query_image", "cand_text", "cand_image", "dataset_infos"])
+
+    return dataset, None
+
+
+@AutoEvalPairDataset.register(DATASET_PARSER_NAME_T2T)
+def load_mmcoir_legacy_t2t(model_args, data_args, *args, **kwargs):
+    # Expected kwargs: data_path, dataset_split, optional num_sample_per_subset
+    data_path = kwargs.get("data_path")
+    dataset_split = kwargs.get("dataset_split", "test")
+    if not data_path:
+        raise ValueError("mmcoir_legacy_t2t requires 'data_path' in task_config (local JSONL path or directory)")
+
+    dataset = _load_local_json_dataset(data_path, dataset_split)
+    num_sample_per_subset = kwargs.get("num_sample_per_subset", sys.maxsize)
+    if num_sample_per_subset is not None and isinstance(num_sample_per_subset, str) and num_sample_per_subset.isdigit():
+        num_sample_per_subset = int(num_sample_per_subset)
+    if isinstance(num_sample_per_subset, int) and num_sample_per_subset < dataset.num_rows:
+        dataset = dataset.select(range(num_sample_per_subset))
+
+    kwargs['model_backbone'] = model_args.model_backbone
+
+    dataset = dataset.map(lambda x: t2t_data_prepare(x, **kwargs), batched=True,
                           batch_size=256, num_proc=4,
                           drop_last_batch=False, load_from_cache_file=False)
     dataset = dataset.select_columns(["query_text", "query_image", "cand_text", "cand_image", "dataset_infos"])
