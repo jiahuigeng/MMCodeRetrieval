@@ -1,0 +1,97 @@
+# MMCoIR Legacy evaluation config
+# This mirrors experiments/public/eval/image.yaml style, adapted for local JSONL datasets.
+
+# Text -> Image retrieval subsets (single correct image per row)
+MMSVG-Icon_t2i:
+  dataset_parser: mmcoir_legacy_t2i
+  data_path: data/MMCoIR_test/MMSVG-Icon_t2i
+  dataset_split: test
+  image_root: data/MMCoIR_test
+  eval_type: global
+  shuffle_candidate_order: true
+MMSVG-Illustration_t2i:
+  dataset_parser: mmcoir_legacy_t2i
+  data_path: data/MMCoIR_test/MMSVG-Illustration_t2i
+  dataset_split: test
+  image_root: data/MMCoIR_test
+  eval_type: global
+  shuffle_candidate_order: true
+
+# Image -> Text retrieval subsets (single correct text per row)
+Web2Code:
+  dataset_parser: mmcoir_legacy_i2t
+  data_path: data/MMCoIR_test/Web2Code
+  dataset_split: test
+  image_root: data/MMCoIR_test
+  eval_type: global
+  shuffle_candidate_order: true
+MMSVG-Icon_i2c:
+  dataset_parser: mmcoir_legacy_i2t
+  data_path: data/MMCoIR_test/MMSVG-Icon_i2c
+  dataset_split: test
+  image_root: data/MMCoIR_test
+  eval_type: global
+  shuffle_candidate_order: true
+MMSVG-Illustration_i2c:
+  dataset_parser: mmcoir_legacy_i2t
+  data_path: data/MMCoIR_test/MMSVG-Illustration_i2c
+  dataset_split: test
+  image_root: data/MMCoIR_test
+  eval_type: global
+  shuffle_candidate_order: true
+ChartGen_i2c:
+  dataset_parser: mmcoir_legacy_i2t
+  data_path: data/MMCoIR_test/ChartGen_i2c
+  dataset_split: test
+  image_root: data/MMCoIR_test
+  eval_type: global
+  shuffle_candidate_order: true
+ChartEdit_i2c:
+  dataset_parser: mmcoir_legacy_i2t
+  data_path: data/MMCoIR_test/ChartEdit_i2c
+  dataset_split: test
+  image_root: data/MMCoIR_test
+  eval_type: global
+  shuffle_candidate_order: true
+DiagramGenBenchmark_i2c:
+  dataset_parser: mmcoir_legacy_i2t
+  data_path: data/MMCoIR_test/DiagramGenBenchmark_i2c
+  dataset_split: test
+  image_root: data/MMCoIR_test
+  eval_type: global
+  shuffle_candidate_order: true
+DATIKZ_i2c:
+  dataset_parser: mmcoir_legacy_i2t
+  data_path: data/MMCoIR_test/DATIKZ_i2c
+  dataset_split: test
+  image_root: data/MMCoIR_test
+  eval_type: global
+  shuffle_candidate_order: true
+PlantUML_Act_i2c:
+  dataset_parser: mmcoir_legacy_i2t
+  data_path: data/MMCoIR_test/PlantUML_Act_i2c
+  dataset_split: test
+  image_root: data/MMCoIR_test
+  eval_type: global
+  shuffle_candidate_order: true
+PlantUML_Seq_i2c:
+  dataset_parser: mmcoir_legacy_i2t
+  data_path: data/MMCoIR_test/PlantUML_Seq_i2c
+  dataset_split: test
+  image_root: data/MMCoIR_test
+  eval_type: global
+  shuffle_candidate_order: true
+SVGStack_i2c:
+  dataset_parser: mmcoir_legacy_i2t
+  data_path: data/MMCoIR_test/SVGStack_i2c
+  dataset_split: test
+  image_root: data/MMCoIR_test
+  eval_type: global
+  shuffle_candidate_order: true
+Sketch2Code_i2c:
+  dataset_parser: mmcoir_legacy_i2t
+  data_path: data/MMCoIR_test/Sketch2Code_i2c
+  dataset_split: test
+  image_root: data/MMCoIR_test
+  eval_type: global
+  shuffle_candidate_order: true

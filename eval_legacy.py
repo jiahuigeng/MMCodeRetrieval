@@ -44,6 +44,24 @@ def pad_dataset_to_divisible(dataset, world_size):
     return padded_dataset, padded_size
 
 
+def single_target_accuracy_at_k(pred_dicts, k=1):
+    """
+    Compute accuracy@k for single-target queries. A query is counted as correct
+    if its single correct label appears in the top-k predictions.
+    """
+    correct = 0
+    total = len(pred_dicts)
+    for pred in pred_dicts:
+        labels = pred.get("label", [])
+        preds = pred.get("prediction", [])
+        if not labels:
+            continue
+        label = labels[0]
+        if label in preds[:min(k, len(preds))]:
+            correct += 1
+    return correct / max(1, total)
+
+
 def encode_embeddings(
     model: MMEBModel,
     loader: DataLoader,
@@ -204,6 +222,12 @@ def main():
             dist.barrier()
         print_master(f"--- Evaluating {dataset_name} ---")
 
+        # Legacy MMCoIR adapters: enforce global ranking with shuffled candidate pool
+        if str(task_config.get("dataset_parser", "")).startswith("mmcoir_legacy"):
+            task_config.setdefault("eval_type", "global")
+            task_config.setdefault("shuffle_candidate_order", True)
+
+
         query_embed_path = os.path.join(data_args.encode_output_path, f"{dataset_name}_qry")
         cand_embed_path = os.path.join(data_args.encode_output_path, f"{dataset_name}_tgt")
         dataset_info_path = os.path.join(data_args.encode_output_path, f"{dataset_name}_info.jsonl")
@@ -329,6 +353,10 @@ def main():
                     rel_docids = gt_info["label_name"] if isinstance(gt_info["label_name"], list) else [gt_info["label_name"]]
                     rel_scores = gt_info["rel_scores"] if "rel_scores" in gt_info else None
                     assert rel_scores is None or len(rel_docids) == len(rel_scores)
+                    # Print a small sample to verify permutation/shuffle effects
+                    if qid < 3:
+                        top5 = [cand_keys[i] for i in (ranked_candid[:5] if isinstance(ranked_candid, list) else ranked_candid[:5].tolist())]
+                        print_master(f"[Preview] {dataset_name} | qid={qid} | label={rel_docids} | top5={top5}")
                     pred_dicts.append({
                         "prediction": [cand_keys[i] for i in ranked_candid],
                         "label": rel_docids,
@@ -365,6 +393,10 @@ def main():
             metrics_to_report = task_config["metrics"] if task_config.get("metrics", None) is not None else ["hit", "ndcg", "precision", "recall", "f1", "map", "mrr"]
             metrics = RankingMetrics(metrics_to_report)
             score_dict = metrics.evaluate(pred_dicts)
+            # Extra: single-target accuracy metrics for legacy datasets
+            if str(task_config.get("dataset_parser", "")).startswith("mmcoir_legacy"):
+                score_dict["acc@1"] = single_target_accuracy_at_k(pred_dicts, k=1)
+                score_dict["acc@5"] = single_target_accuracy_at_k(pred_dicts, k=5)
             formatted = {k: f"{v:.4f}" for k, v in score_dict.items()}
             score_dict["num_pred"] = len(pred_dicts)
             score_dict["num_data"] = len(gt_infos)
