@@ -1,154 +1,196 @@
 Chart2Code:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: Chart2Code
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: i2t
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: Chart2Code
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
 ChartGen_c2i:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: ChartGen_c2i
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: t2i
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: ChartGen_c2i
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
+
 ChartGen_i2c:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: ChartGen_i2c
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: i2t
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: ChartGen_i2c
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
+
 ChartGen_t2c:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: ChartGen_t2c
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: t2t
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: ChartGen_t2c
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
+
 ChartGen_t2i:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: ChartGen_t2i
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: t2i
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: ChartGen_t2i
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
+
 DATIKZ_c2i:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: DATIKZ_c2i
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: t2i
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: DATIKZ_c2i
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
+
 DATIKZ_i2c:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: DATIKZ_i2c
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: i2t
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: DATIKZ_i2c
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
+
 MMSVG-Icon_c2i:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: MMSVG-Icon_c2i
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: t2i
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: MMSVG-Icon_c2i
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
+
 MMSVG-Icon_i2c:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: MMSVG-Icon_i2c
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: i2t
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: MMSVG-Icon_i2c
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
+
 MMSVG-Icon_t2c:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: MMSVG-Icon_t2c
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: t2t
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: MMSVG-Icon_t2c
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
+
 MMSVG-Icon_t2i:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: MMSVG-Icon_t2i
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: t2i
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: MMSVG-Icon_t2i
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
+
 MMSVG-Illustration_c2i:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: MMSVG-Illustration_c2i
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: t2i
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: MMSVG-Illustration_c2i
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
+
 MMSVG-Illustration_i2c:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: MMSVG-Illustration_i2c
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: i2t
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: MMSVG-Illustration_i2c
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
+
 MMSVG-Illustration_t2c:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: MMSVG-Illustration_t2c
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: t2t
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: MMSVG-Illustration_t2c
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
+
 MMSVG-Illustration_t2i:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: MMSVG-Illustration_t2i
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: t2i
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: MMSVG-Illustration_t2i
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
+
 PlantUML_Act_c2i:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: PlantUML_Act_c2i
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: t2i
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: PlantUML_Act_c2i
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
+
 PlantUML_Act_i2c:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: PlantUML_Act_i2c
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: i2t
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: PlantUML_Act_i2c
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
+
 PlantUML_Seq_c2i:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: PlantUML_Seq_c2i
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: t2i
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: PlantUML_Seq_c2i
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
+
 PlantUML_Seq_i2c:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: PlantUML_Seq_i2c
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: i2t
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: PlantUML_Seq_i2c
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
+
 SVGStack_c2i:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: SVGStack_c2i
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: t2i
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: SVGStack_c2i
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
+
 SVGStack_i2c:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: SVGStack_i2c
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: i2t
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: SVGStack_i2c
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
+
 Web2Code:
-    dataset_parser: vlm2vec_legacy
-    dataset_name: Web2Code
-    dataset_split: train
-    image_root: ./
-    eval_type: local
-    data_type: i2t
+    dataset_parser: mmeb
+    dataset_name: JiahuiGengNLP/MMCoIR-train
+    subset_name: Web2Code
+    dataset_split: original
+    image_dir: data/MMCoIR_train
+    num_sample_per_subset: 100000
+    weight: 1
