@@ -43,12 +43,9 @@ for spec in "${MODEL_SPECS[@]}"; do
     --encode_output_path \"$BASE_OUTPUT_PATH\" \
     --data_basedir \"$DATA_BASEDIR\" \
     --per_device_eval_batch_size $BATCH_SIZE \
-    --dataloader_num_workers $NUM_WORKERS"
+    --dataloader_num_workers $NUM_WORKERS \
+    --num-sample-per-subset 10"
 
-  # Optional: limit samples via CLI flag
-  if [[ -n "$LIMIT_SAMPLES" ]]; then
-    cmd="$cmd --num_sample_per_subset $LIMIT_SAMPLES"
-  fi
 
   echo "  - Executing command..."
   eval "$cmd"
