@@ -30,6 +30,7 @@ from .image_t2i_eval import load_image_t2i_dataset
 from .image_i2t_eval import load_image_i2t_dataset
 from .image_i2i_vg_dataset import load_image_i2i_vg_dataset
 from .vlm2vec_legacy_eval import load_vlm2vec_legacy_dataset
+from .mmcoir_legacy_eval import load_mmcoir_legacy_i2t, load_mmcoir_legacy_t2i
 
 # VisDoc
 from .vidore_dataset import load_vidore_dataset
