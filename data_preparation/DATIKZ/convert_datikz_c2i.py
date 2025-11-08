@@ -208,7 +208,19 @@ def make_rel_img_path(rel_prefix: str, basename: str) -> str:
     return f"{rel_prefix}/{basename}"
 
 
-def to_item(image_token: str, code_str: str, rel_img: str) -> Dict[str, Any]:
+def to_train_item(image_token: str, code_str: str, rel_img: str) -> Dict[str, Any]:
+    qry = f"Please convert this code to image.\n{code_str}"
+    return {
+        "qry": qry,
+        "qry_image_path": "",
+        "pos_text": image_token,
+        "pos_image_path": rel_img,
+        "neg_text": "",
+        "neg_image_path": "",
+    }
+
+
+def to_test_item(image_token: str, code_str: str, rel_img: str) -> Dict[str, Any]:
     qry = f"Please convert this code to image.\n{code_str}"
     return {
         "qry_text": qry,
@@ -289,7 +301,7 @@ def main():
             continue
         base = image_basename_from_value(img_val, f"datikz_train_{i:07d}.png")
         rel_img = make_rel_img_path(rel_img_prefix, base)
-        train_items.append(to_item(args.image_token, str(code_str), rel_img))
+        train_items.append(to_train_item(args.image_token, str(code_str), rel_img))
         if copy_images:
             src_path, img_bytes = extract_image_payload(dataset_root, src_images_dir_default, img_val)
             dest_img = dest_train_images_dir / base
@@ -326,7 +338,7 @@ def main():
             continue
         base = image_basename_from_value(img_val, f"datikz_test_{i:07d}.png")
         rel_img = make_rel_img_path(rel_img_prefix, base)
-        test_items.append(to_item(args.image_token, str(code_str), rel_img))
+        test_items.append(to_test_item(args.image_token, str(code_str), rel_img))
         if copy_images:
             src_path, img_bytes = extract_image_payload(dataset_root, src_images_dir_default, img_val)
             dest_img = dest_test_images_dir / base
@@ -387,10 +399,10 @@ def main():
 
     # 打印一个示例
     if train_items:
-        print("\n=== 训练样本示例 ===")
+        print("\n=== 训练样本示例（6 键）===")
         print(json.dumps(train_items[0], ensure_ascii=False, indent=2))
     if test_items:
-        print("\n=== 测试样本示例 ===")
+        print("\n=== 测试样本示例（4 键）===")
         print(json.dumps(test_items[0], ensure_ascii=False, indent=2))
 
 
