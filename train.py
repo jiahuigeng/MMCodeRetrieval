@@ -110,3 +110,9 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # Normalize max token length: prefer --max_token over --max_len if provided
+    if getattr(data_args, "max_token", None) is not None:
+        data_args.max_len = data_args.max_token
+        logger.info(f"Using max_token={data_args.max_token} (applied as max_len)")
+    else:
+        logger.info(f"Using max_len={data_args.max_len}")

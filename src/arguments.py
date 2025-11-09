@@ -47,6 +47,8 @@ class DataArguments:
     image_dir: str = field(default=None, metadata={"help": "Image directory path"})
     encode_output_path: str = field(default=None, metadata={"help": "encode output path"})
     max_len: int = field(default=None, metadata={"help": "The maximum total input sequence length after tokenization. Use with caution, since it may truncate text prompts due to large image lengths."},)
+    # Alias for max_len to make CLI clearer for training usage
+    max_token: int = field(default=None, metadata={"help": "Alias of max_len: maximum total input tokens after tokenization (e.g., 512). If set, overrides max_len."})
     embedding_type: str = field(default="", metadata={"help": "embedding type"})
     image_resolution: str = field(default=None, metadata={"help": "for models i.e. LLaVA-next and Qwen, resize images first, none means using original image resolution. This is only works when `--resize_use_processor false`."})
     resize_use_processor: bool = field(default=True, metadata={"help": "Resize visual inputs insides processor, e.g. Qwen2VLImageProcessor, instead of by our code."})
