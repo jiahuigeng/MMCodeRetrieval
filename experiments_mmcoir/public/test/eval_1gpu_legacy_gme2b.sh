@@ -43,7 +43,8 @@ for spec in "${MODEL_SPECS[@]}"; do
     --encode_output_path \"$BASE_OUTPUT_PATH\" \
     --data_basedir \"$DATA_BASEDIR\" \
     --per_device_eval_batch_size $BATCH_SIZE \
-    --dataloader_num_workers $NUM_WORKERS"
+    --dataloader_num_workers $NUM_WORKERS \
+    --max_token 512"
     # --num-sample-per-subset 10
   echo "  - Executing command..."
   eval "$cmd"
