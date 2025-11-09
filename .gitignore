@@ -13,6 +13,10 @@ workspace.xml
 datasets/
 MMCoIR/
 useless/
+exps/
+.../
+new_datasets/
+experiments_mmcoir/public/test/mmcoir_legacy copy.yaml
 # 忽略这些目录下的所有内容
 MMCoIR-test/*
 MMCoIR-train/*
