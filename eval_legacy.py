@@ -184,6 +184,10 @@ def main():
     model_args: ModelArguments
     data_args: DataArguments
     training_args: TrainingArguments
+    # Normalize max token length alias for evaluation (legacy)
+    if getattr(data_args, "max_token", None) is not None:
+        data_args.max_len = data_args.max_token
+        print_master(f"[Legacy Eval] Using effective max_length={data_args.max_len} from --max_token")
     os.makedirs(data_args.encode_output_path, exist_ok=True)
 
     # --- Model Loading ---

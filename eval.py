@@ -167,6 +167,11 @@ def main():
     model_args: ModelArguments
     data_args: DataArguments
     training_args: TrainingArguments
+    # Normalize max token length alias for evaluation
+    if getattr(data_args, "max_token", None) is not None:
+        # Use --max_token to override/define effective max_len
+        data_args.max_len = data_args.max_token
+        print_master(f"[Eval] Using effective max_length={data_args.max_len} from --max_token")
     os.makedirs(data_args.encode_output_path, exist_ok=True)
 
     # --- Model Loading ---
