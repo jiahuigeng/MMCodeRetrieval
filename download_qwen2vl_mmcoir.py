@@ -58,7 +58,7 @@ def main():
     # 目录/命名策略：若显式提供 --local-dir 则优先使用；否则按 models_dir/dest_name 拼接，其中 dest_name 默认为 't'+仓库末段名
     parser.add_argument("--local-dir", default=None, help="显式指定本地保存目录（优先级最高）")
     parser.add_argument("--models-dir", default="models", help="模型保存的根目录（当未显式指定 local-dir 时使用）")
-    parser.add_argument("--dest-prefix", default="t", help="派生目标目录名的前缀，例如 't' => t<模型名>")
+    parser.add_argument("--dest-prefix", default="", help="派生目标目录名的前缀，例如 't' => t<模型名>")
     parser.add_argument("--dest-name", default=None, help="派生的目标目录名（默认按 repo-id 末段加前缀），例如 tQwen2VL-2B-...")
     parser.add_argument("--cache-dir", default=None, help="缓存目录（可选）")
     parser.add_argument("--allow-patterns", nargs="*", default=None, help="允许下载的文件模式列表")
