@@ -55,21 +55,27 @@ def main():
         print(f"没有找到 *_score.json 文件于 {base_dir}")
         sys.exit(0)
 
-    # Collect and sort by dataset name (alphabetical)
-    rows = []
+    # Collect rows and group by model (preserve model encounter order),
+    # then sort datasets alphabetically within each model.
+    grouped = {}
+    model_order = []
     for p in files:
         model, dataset = extract_model_and_dataset(p, base_dir)
         lin, exp = read_metrics(p)
-        rows.append((model, dataset, lin, exp))
+        if model not in grouped:
+            grouped[model] = []
+            model_order.append(model)
+        grouped[model].append((dataset, lin, exp))
 
-    rows.sort(key=lambda x: x[1].lower())
-
-    # Print header and sorted rows
+    # Print header and rows: for each model, datasets sorted by name
     print("model\tdataset\tndcg_linear@10\tndcg_exponential@10")
-    for model, dataset, lin, exp in rows:
-        lin_str = "" if lin is None else str(lin)
-        exp_str = "" if exp is None else str(exp)
-        print(f"{model}\t{dataset}\t{lin_str}\t{exp_str}")
+    for model in model_order:
+        rows = grouped[model]
+        rows.sort(key=lambda x: x[0].lower())
+        for dataset, lin, exp in rows:
+            lin_str = "" if lin is None else str(lin)
+            exp_str = "" if exp is None else str(exp)
+            print(f"{model}\t{dataset}\t{lin_str}\t{exp_str}")
 
 
 if __name__ == "__main__":
