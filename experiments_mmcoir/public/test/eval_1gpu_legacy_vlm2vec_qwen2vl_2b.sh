@@ -23,8 +23,9 @@ echo "Data base dir: $DATA_BASEDIR"
 echo "Dataset YAML: $DATA_CONFIG"
 echo "Output base dir: $OUTPUT_BASEDIR"
 
-# === Model Specs (format: "MODEL_NAME;MODEL_BACKBONE;BASE_OUTPUT_PATH") ===
+# === Model Specs (edit as needed; format: "MODEL_NAME;MODEL_BACKBONE;BASE_OUTPUT_PATH") ===
 declare -a MODEL_SPECS
+# 示例：可添加多模型，以分号分隔：模型名;骨干;输出路径基底
 MODEL_SPECS+=( "TIGER-Lab/VLM2Vec-Qwen2VL-2B;qwen2_vl;$OUTPUT_BASEDIR/VLM2Vec-Qwen2VL-2B" )
 
 for spec in "${MODEL_SPECS[@]}"; do
@@ -36,13 +37,15 @@ for spec in "${MODEL_SPECS[@]}"; do
   mkdir -p "$BASE_OUTPUT_PATH"
 
   cmd="CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES python eval_legacy.py \
-
+    --model_backbone \"$MODEL_BACKBONE\" \
     --model_name \"$MODEL_NAME\" \
     --dataset_config \"$DATA_CONFIG\" \
     --encode_output_path \"$BASE_OUTPUT_PATH\" \
     --data_basedir \"$DATA_BASEDIR\" \
     --per_device_eval_batch_size $BATCH_SIZE \
-    --dataloader_num_workers $NUM_WORKERS"
+    --dataloader_num_workers $NUM_WORKERS \
+    --max_token 512"
+    # --num-sample-per-subset 10
   echo "  - Executing command..."
   eval "$cmd"
   echo "  - Done."
