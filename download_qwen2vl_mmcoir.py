@@ -44,11 +44,22 @@ def setup_env(use_mirror: bool = False, proxy: str | None = None, token: str | N
         print("[INFO] 已设置 Hugging Face token")
 
 
+def derive_dest_name(repo_id: str, prefix: str | None = "t") -> str:
+    name = repo_id.split("/")[-1]
+    if prefix:
+        return f"{prefix}{name}"
+    return name
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Download HF model: trumancai/qwen2vl_mmcoir")
-    parser.add_argument("--repo-id", default=DEFAULT_REPO_ID, help="模型仓库ID")
+    parser = argparse.ArgumentParser(description="Download HF model for Qwen2VL MMCoIR")
+    parser.add_argument("--repo-id", default=DEFAULT_REPO_ID, help="模型仓库ID，例如 trumancai/Qwen2VL-2B-mmcoir-imageonly-lora8-len512-ckpt-400")
     parser.add_argument("--revision", default=None, help="分支/版本（默认仓库当前版本）")
-    parser.add_argument("--local-dir", default=str(Path("models") / "qwen2vl_mmcoir"), help="模型保存到本地目录")
+    # 目录/命名策略：若显式提供 --local-dir 则优先使用；否则按 models_dir/dest_name 拼接，其中 dest_name 默认为 't'+仓库末段名
+    parser.add_argument("--local-dir", default=None, help="显式指定本地保存目录（优先级最高）")
+    parser.add_argument("--models-dir", default="models", help="模型保存的根目录（当未显式指定 local-dir 时使用）")
+    parser.add_argument("--dest-prefix", default="t", help="派生目标目录名的前缀，例如 't' => t<模型名>")
+    parser.add_argument("--dest-name", default=None, help="派生的目标目录名（默认按 repo-id 末段加前缀），例如 tQwen2VL-2B-...")
     parser.add_argument("--cache-dir", default=None, help="缓存目录（可选）")
     parser.add_argument("--allow-patterns", nargs="*", default=None, help="允许下载的文件模式列表")
     parser.add_argument("--ignore-patterns", nargs="*", default=None, help="忽略的文件模式列表")
@@ -58,13 +69,21 @@ def main():
 
     args = parser.parse_args()
 
-    local_dir = Path(args.local_dir).resolve()
+    # 解析本地保存目录
+    if args.local_dir:
+        local_dir = Path(args.local_dir).resolve()
+        derived_from = "--local-dir"
+    else:
+        dest_name = args.dest_name or derive_dest_name(args.repo_id, args.dest_prefix)
+        local_dir = Path(args.models_dir) / dest_name
+        local_dir = local_dir.resolve()
+        derived_from = f"{args.models_dir}/{dest_name}"
     local_dir.mkdir(parents=True, exist_ok=True)
 
     setup_env(use_mirror=args.use_mirror, proxy=args.proxy, token=args.token)
 
     print(f"[INFO] 下载模型：{args.repo_id}")
-    print(f"[INFO] 保存路径：{local_dir}")
+    print(f"[INFO] 保存路径：{local_dir} （来源：{derived_from}）")
     if args.revision:
         print(f"[INFO] 使用版本：{args.revision}")
     if args.allow_patterns:
