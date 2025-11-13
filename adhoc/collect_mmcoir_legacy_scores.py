@@ -32,7 +32,7 @@ def read_metrics(path: str):
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        lin = data.get("ndcg_linear@10")
+        lin = data.get("hit@1")
         exp = data.get("ndcg_exponential@10")
         return lin, exp
     except Exception as e:
@@ -68,7 +68,7 @@ def main():
         grouped[model].append((dataset, lin, exp))
 
     # Print header and rows: for each model, datasets sorted by name
-    print("model\tdataset\tndcg_linear@10\tndcg_exponential@10")
+    print("model\tdataset\thit@1\tndcg_exponential@10")
     for model in model_order:
         rows = grouped[model]
         rows.sort(key=lambda x: x[0].lower())
