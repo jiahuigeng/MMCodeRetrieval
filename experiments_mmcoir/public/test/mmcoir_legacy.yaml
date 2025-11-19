@@ -110,8 +110,8 @@ ChartEdit_i2c:
   shuffle_candidate_order: true
 
 ChartEdit_c2i:
-  dataset_parser: mmcoir_legacy_i2t
-  data_path:  ChartEdit_i2c
+  dataset_parser: mmcoir_legacy_t2t
+  data_path:  ChartEdit_c2i
   dataset_split: test
   image_root:  ./
   eval_type: global
