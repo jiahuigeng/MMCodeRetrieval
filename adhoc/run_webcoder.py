@@ -65,10 +65,16 @@ def main():
     model = Pix2StructForConditionalGeneration.from_pretrained(
         "xcodemind/webcoder",
         torch_dtype=torch_dtype if torch_dtype is not None else None,
+        device_map=None,             # 明确禁用 device_map，以避免 transformers 尝试自动分配
+        low_cpu_mem_usage=False,     # 关闭该模式，防止与 device_map 逻辑耦合
     )
 
     # 统一移动到指定设备（Pix2Struct 不支持 device_map='auto'）
-    model = model.to(args.device)
+    try:
+        model = model.to(args.device)
+    except Exception as e:
+        print(f"[Warn] Move model to {args.device} failed: {e}. Fallback to CPU.")
+        model = model.to("cpu")
 
     # 读取图片
     image = load_image(args.image)
