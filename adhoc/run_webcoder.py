@@ -65,12 +65,10 @@ def main():
     model = Pix2StructForConditionalGeneration.from_pretrained(
         "xcodemind/webcoder",
         torch_dtype=torch_dtype if torch_dtype is not None else None,
-        device_map="auto" if args.device == "cuda" else None,
     )
 
-    # 移动到设备
-    if args.device == "cuda" and not hasattr(model, "hf_device_map"):
-        model = model.to("cuda")
+    # 统一移动到指定设备（Pix2Struct 不支持 device_map='auto'）
+    model = model.to(args.device)
 
     # 读取图片
     image = load_image(args.image)
